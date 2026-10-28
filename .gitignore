@@ -1,0 +1,51 @@
+node_modules/
+dist/
+.next/
+out/
+build/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# turbo
+.turbo/
+
+# agently orchestrator runtime (pids + logs)
+.agently/
+
+# typescript
+*.tsbuildinfo
+notion.md
+product.md
+# planning docs (local only)
+plan_for_prompt_to_workflow.md
+practice.go
+understand.md
+v1-13.md
+# embedding generator staging (resumable partial runs — never load-bearing)
+packages/nodes/pieces/embeddings.partial.json
+packages/nodes/pieces/embeddings.partial.bin
+
+# Python
+.venv/
+__pycache__/
+
+# build output and local logs
+/bin/
+/logs/
+
+# local env backups (contain live keys)
+.env.bak*

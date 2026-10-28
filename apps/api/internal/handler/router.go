@@ -1,0 +1,88 @@
+package handler
+
+import (
+	"os"
+
+	"github.com/agently/api/internal/services"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+)
+
+// NewRouter mounts every API route under /api. The path table mirrors the TS
+// contract in packages/contracts/src/api.ts exactly.
+func NewRouter(p *services.Platform) chi.Router {
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
+	r.Use(corsMiddleware())
+	r.Use(authMiddleware(os.Getenv("AGENTLY_API_TOKEN")))
+	r.Use(middleware.Recoverer)
+
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/health", health(p))
+		r.Get("/dashboard", dashboard(p))
+
+		r.Get("/workflows", listWorkflows(p))
+		r.Post("/workflows", createWorkflow(p))
+		r.Post("/workflows/plan", planWorkflow(p))
+		r.Get("/workflows/{slug}", getWorkflow(p))
+		r.Get("/workflows/{slug}/graph", graphWorkflow(p))
+		r.Put("/workflows/{slug}/graph", saveWorkflowGraph(p))
+		r.Get("/workflows/{slug}/node-data", workflowNodeData(p))
+		r.Put("/workflows/{slug}/settings", updateWorkflowSettings(p))
+		r.Post("/workflows/{slug}/runs", launchRun(p))
+		r.Get("/workflows/{slug}/runs", listWorkflowRuns(p))
+
+		// Piece trigger lifecycle + webhook ingress (pieces-runtime-contract,
+		// triggers section). /hooks is the provider-facing delivery URL.
+		r.Post("/workflows/{slug}/triggers/{nodeKey}/enable", triggerLifecycle(p, "enable"))
+		r.Post("/workflows/{slug}/triggers/{nodeKey}/disable", triggerLifecycle(p, "disable"))
+		r.Post("/workflows/{slug}/triggers/{nodeKey}/poll", triggerPoll(p))
+		r.Post("/hooks/{slug}/{nodeKey}", pieceHook(p))
+
+		r.Get("/runs", listRuns(p))
+		r.Get("/runs/{id}", getRun(p))
+		r.Post("/runs/{id}/cancel", cancelRun(p))
+		r.Get("/runs/{id}/logs", listLogs(p))
+		r.Get("/runs/{id}/logs/stream", streamLogs(p))
+		r.Get("/runs/{id}/artifacts/{artifactId}/download", downloadArtifact(p))
+		r.Get("/runs/{id}/browser", getBrowserSession(p))
+
+		r.Get("/agents", listAgents(p))
+		r.Post("/agents", createAgent(p))
+
+		r.Get("/notifications", listNotifications(p))
+		r.Post("/notifications/read-all", markAllNotificationsRead(p))
+		r.Post("/notifications/{id}/read", markNotificationRead(p))
+
+		r.Get("/activity", activityFeed(p))
+
+		// Third-party account connections (OAuth2). connect/callback are browser
+		// navigations (302s), not JSON endpoints.
+		// DB-backed credential store (docs/credentials-contract.md §4). Values
+		// are write-only; responses expose which keys are set, never the secrets.
+		r.Get("/credentials", listCredentials(p))
+		r.Post("/credentials", createCredential(p))
+		r.Put("/credentials/{id}", updateCredential(p))
+		r.Delete("/credentials/{id}", deleteCredential(p))
+
+		// Browser sign-in for credential types whose piece declares OAuth2.
+		// start/callback are popup navigations (302s), not JSON endpoints.
+		r.Get("/oauth/callback", oauthCallback(p))
+		r.Get("/oauth/apps", oauthApps(p))
+		r.Get("/oauth/{type}", oauthStatus(p))
+		r.Get("/oauth/{type}/start", oauthStart(p))
+
+		// Dynamic-prop options for pieces.* nodes (proxied to the pieces worker).
+		r.Post("/pieces/options", piecesOptions(p))
+
+		r.Get("/integrations", listIntegrations(p))
+		r.Get("/integrations/google/connect", connectGoogle(p))
+		r.Get("/integrations/google/callback", googleCallback(p))
+		r.Post("/integrations/google/disconnect", disconnectGoogle(p))
+
+		r.Get("/events/stream", eventsStream(p))
+	})
+
+	return r
+}

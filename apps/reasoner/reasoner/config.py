@@ -1,0 +1,157 @@
+"""Configuration, loaded from the repo-root .env (shared with the Go services)."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# This file lives at apps/reasoner/reasoner/config.py, so the shared repo-root
+# .env is THREE parents up (parents[2] is apps/ — an easy off-by-one). Load it
+# best-effort so DATABASE_URL / keys are present without re-exporting; real env
+# vars always win (load_dotenv never overwrites existing ones).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(_REPO_ROOT / ".env")
+
+
+def _clean(url: str | None) -> str | None:
+    """Strip a Supabase-style pooler suffix is not needed; just return as-is."""
+    return url
+
+
+def _require(name: str, because: str) -> str:
+    """Read a mandatory env var or refuse to start, naming what needs it.
+
+    The reasoner no longer has degraded modes to fall into — no mock completions,
+    no simulated browser, no record-intent for undeliverable email — so a missing
+    credential is not something to discover halfway through a user's first run.
+    """
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise SystemExit(f"{name} is required — {because}. Set it in .env.")
+    return value
+
+
+@dataclass(frozen=True)
+class Config:
+    # Shared Agently Postgres — the single source of truth the Go API serves.
+    database_url: str
+    # Temporal.
+    temporal_hostport: str
+    temporal_namespace: str
+    temporal_task_queue: str
+    # Task queue the Node pieces worker (apps/pieces-worker) polls for the
+    # cross-queue execute_piece activity (docs/pieces-runtime-contract.md §3).
+    pieces_task_queue: str
+    # Langfuse. Required: a run that cannot be traced is a run nobody can debug.
+    langfuse_host: str
+    langfuse_public_key: str
+    langfuse_secret_key: str
+    # Models. The provider follows the name: ollama/<model> runs on a local
+    # Ollama server (no key), anything else on Gemini (GEMINI_API_KEY).
+    model: str
+    synthesis_model: str
+    gemini_api_key: str
+    ollama_host: str
+    ollama_num_ctx: int
+    # Browserbase. Browser nodes fail clearly when it is not configured.
+    browserbase_api_key: str
+    browserbase_project_id: str
+    # SMTP. output.email fails when delivery is not configured. Env var
+    # names mirror the retired Go worker's notifier (archive/worker/internal/notifier).
+    smtp_host: str
+    smtp_port: str
+    smtp_user: str
+    smtp_pass: str
+    smtp_from: str
+    # tool.code sandbox gate (opt-in — disabled execution is an explicit error).
+    tool_code_enabled: bool
+    # tool.db target (opt-in — SQL runs ONLY against this dedicated URL, never the
+    # platform Postgres; unset is an explicit error).
+    tool_db_url: str
+    # How often the dispatcher polls Postgres for queued temporal runs (seconds).
+    dispatch_interval_s: float
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(self.langfuse_public_key and self.langfuse_secret_key)
+
+    @property
+    def browserbase_enabled(self) -> bool:
+        return bool(self.browserbase_api_key and self.browserbase_project_id)
+
+    @property
+    def smtp_enabled(self) -> bool:
+        return bool(self.smtp_host)
+
+
+def is_ollama_model(model: str) -> bool:
+    return model.startswith("ollama/")
+
+
+def _gemini_key(*models: str) -> str:
+    """GEMINI_API_KEY is mandatory only when a configured model runs on Gemini.
+
+    A node may still name a Gemini model explicitly; llm.complete() reports the
+    missing key for that node rather than letting it fail obscurely.
+    """
+    if all(is_ollama_model(m) for m in models):
+        return os.getenv("GEMINI_API_KEY", "").strip()
+    return _require("GEMINI_API_KEY", "REASONER_MODEL / REASONER_SYNTHESIS_MODEL run on Gemini")
+
+
+def load() -> Config:
+    model = os.getenv("REASONER_MODEL", "gemini-3.5-flash-lite")
+    synthesis_model = os.getenv("REASONER_SYNTHESIS_MODEL", "gemini-3.5-flash-lite")
+    return Config(
+        database_url=_clean(
+            _require(
+                "DATABASE_URL",
+                "the reasoner writes run state into the shared Agently Postgres",
+            )
+        ),
+        temporal_hostport=os.getenv("TEMPORAL_HOSTPORT", "localhost:7233"),
+        temporal_namespace=os.getenv("TEMPORAL_NAMESPACE", "default"),
+        temporal_task_queue=os.getenv("TEMPORAL_TASK_QUEUE", "agently-reasoner"),
+        pieces_task_queue=os.getenv("PIECES_TASK_QUEUE", "agently-pieces"),
+        langfuse_host=os.getenv("LANGFUSE_HOST", "http://localhost:3001"),
+        langfuse_public_key=_require(
+            "LANGFUSE_PUBLIC_KEY", "every LLM call is traced to Langfuse"
+        ),
+        langfuse_secret_key=_require(
+            "LANGFUSE_SECRET_KEY", "every LLM call is traced to Langfuse"
+        ),
+        # Reasoning gets the strongest model; synthesis is summarizing work
+        # already done, so it runs a tier down. Free-tier keys hit
+        # 429 at 5 req/min on the non-lite flash models; lite tiers allow more.
+        model=model,
+        synthesis_model=synthesis_model,
+        gemini_api_key=_gemini_key(model, synthesis_model),
+        ollama_host=os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/"),
+        # Ollama's default context is a few thousand tokens and it truncates
+        # silently; agent prompts carry whole upstream outputs, so ask for more.
+        ollama_num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "16384")),
+        browserbase_api_key=_require(
+            "BROWSERBASE_API_KEY", "tool.browser drives a real Browserbase session"
+        ),
+        browserbase_project_id=_require(
+            "BROWSERBASE_PROJECT_ID", "tool.browser drives a real Browserbase session"
+        ),
+        smtp_host=_require("SMTP_HOST", "output.email delivers over SMTP"),
+        smtp_port=os.getenv("SMTP_PORT", "587"),
+        smtp_user=os.getenv("SMTP_USER", ""),
+        smtp_pass=os.getenv("SMTP_PASS", ""),
+        # from = SMTP_FROM, then SMTP_USER (mirrors the Go notifier's fallback).
+        smtp_from=os.getenv("SMTP_FROM", "") or os.getenv("SMTP_USER", ""),
+        tool_code_enabled=os.getenv("TOOL_CODE_ENABLED", "") in ("1", "true", "yes"),
+        tool_db_url=os.getenv("TOOL_DB_URL", ""),
+        dispatch_interval_s=float(os.getenv("REASONER_DISPATCH_INTERVAL_S", "1.5")),
+    )
+
+
+CONFIG = load()

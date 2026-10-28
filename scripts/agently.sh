@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+#
+# agently.sh — one-command orchestrator for the whole local stack.
+#
+#   pnpm agently            # cold start EVERYTHING (infra + build + all services)
+#   pnpm agently:stop       # stop the app processes (leave Docker running)
+#   pnpm agently:down       # stop app processes AND Docker
+#   pnpm agently:status     # what's up / down
+#   pnpm agently:logs [svc] # tail logs (svc = api|reasoner|pieces|web; default all)
+#   pnpm agently:api        # rebuild+restart just the API   (after apps/api/**.go change)
+#   pnpm agently:reasoner   # restart just the Reasoner       (after apps/reasoner/**.py change)
+#   pnpm agently:web        # restart just the Web            (after next.config/env change)
+#
+# The Web app hot-reloads on its own (Next Fast Refresh) — you only restart it for
+# config/env changes. Go and Python are long-lived processes: restart on change.
+#
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+# ---------- config (override by exporting before you call) ----------
+export DATABASE_URL="${DATABASE_URL:-postgres://agently:agently@localhost:5433/agently}"
+API_ADDR="${API_ADDR:-:8090}"                 # API on :8090 — :8080 is taken by Temporal UI
+API_PORT="${API_ADDR##*:}"
+export API_PROXY_TARGET="${API_PROXY_TARGET:-http://localhost:${API_PORT}}"
+export TEMPORAL_HOSTPORT="${TEMPORAL_HOSTPORT:-localhost:7233}"
+export TEMPORAL_TASK_QUEUE="${TEMPORAL_TASK_QUEUE:-agently-reasoner}"
+export PIECES_TASK_QUEUE="${PIECES_TASK_QUEUE:-agently-pieces}"
+
+# Credentials are auto-loaded from .env by the services themselves:
+# GEMINI_API_KEY, MOONSHOT_API_KEY, LANGFUSE_*, BROWSERBASE_* and SMTP_*.
+# Next.js only reads apps/web/.env, so the web's access settings come from here.
+env_value() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+export AGENTLY_API_TOKEN="${AGENTLY_API_TOKEN:-$(env_value AGENTLY_API_TOKEN)}"
+export AGENTLY_WEB_PASSWORD="${AGENTLY_WEB_PASSWORD:-$(env_value AGENTLY_WEB_PASSWORD)}"
+
+API_BIN=/tmp/agently-api
+RUNDIR="$ROOT/.agently"
+LOGS="$RUNDIR/logs"
+mkdir -p "$LOGS"
+
+c_grn=$'\033[32m'; c_red=$'\033[31m'; c_dim=$'\033[2m'; c_rst=$'\033[0m'
+say() { printf "%s\n" "$*"; }
+ok()  { printf "  ${c_grn}✓${c_rst} %s\n" "$*"; }
+bad() { printf "  ${c_red}✗${c_rst} %s\n" "$*"; }
+
+# ---------- process helpers ----------
+pidfile() { echo "$RUNDIR/$1.pid"; }
+is_up()   { local f; f="$(pidfile "$1")"; [ -f "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null; }
+
+stop_one() {
+  local n="$1" f; f="$(pidfile "$n")"
+  [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null
+  rm -f "$f"
+  case "$n" in
+    api)      pkill -f agently-api 2>/dev/null ;;
+    reasoner) pkill -f "reasoner.worker" 2>/dev/null ;;
+    pieces)   pkill -f "pieces-worker/dist/worker.js" 2>/dev/null ;;
+    web)      pkill -f "next dev" 2>/dev/null ;;
+  esac
+  return 0
+}
+
+wait_http() { # url tries
+  local url="$1" tries="${2:-40}" i
+  for i in $(seq 1 "$tries"); do curl -sf -o /dev/null "$url" && return 0; sleep 1; done
+  return 1
+}
+
+# ---------- build ----------
+build_go() {
+  say "Building Go binaries…"
+  ( cd apps/api    && go build -o "$API_BIN"    ./cmd/server ) && ok "api built"    || { bad "api build failed";    return 1; }
+}
+
+ensure_web_deps() {
+  [ -x "$ROOT/node_modules/.bin/next" ] || [ -x "$ROOT/apps/web/node_modules/.bin/next" ] || { say "Installing web deps (pnpm install)…"; pnpm install >/dev/null; }
+}
+
+ensure_reasoner_venv() {
+  [ -x "$ROOT/apps/reasoner/.venv/bin/python" ] || {
+    bad "reasoner venv missing at apps/reasoner/.venv — create it:"
+    say "    cd apps/reasoner && python3 -m venv .venv && ./.venv/bin/pip install -e ."
+    return 1
+  }
+}
+
+# The pieces worker is required for workflows containing pieces.* nodes.
+pieces_built() { [ -f "$ROOT/apps/pieces-worker/dist/worker.js" ]; }
+
+# ---------- infra ----------
+start_infra() {
+  say "Starting Docker infra (Postgres + Temporal)…"
+  docker info >/dev/null 2>&1 || { bad "Docker daemon not running — start it first (colima start)."; return 1; }
+  docker compose up -d >/dev/null 2>&1 || { bad "docker compose up failed"; return 1; }
+  printf "  waiting for Postgres"
+  for i in $(seq 1 40); do docker exec agently-postgres pg_isready -U agently >/dev/null 2>&1 && break; printf "."; sleep 1; done
+  echo; ok "infra up (postgres :5433, temporal :7233, temporal-ui :8080)"
+  # The reasoner refuses to start without Langfuse: every run is traced.
+  docker compose -f docker-compose.langfuse.yml up -d >/dev/null 2>&1 \
+    && ok "langfuse up (http://localhost:3001 — dev@agently.local / agently-dev-pw)" \
+    || { bad "langfuse compose up failed"; return 1; }
+  # Any ollama/<model> (embeddings, planner tiers, reasoner) needs the server
+  # running and the model pulled — check both now rather than mid-compile.
+  local models
+  models="$(grep -E '^(PLANNER_EMBED_MODEL|PLANNER_MAP_MODEL|PLANNER_MODEL|REASONER_MODEL|REASONER_SYNTHESIS_MODEL)=ollama/' "$ROOT/.env" 2>/dev/null \
+    | sed -E 's/^[A-Z_]+=ollama\///' | sort -u)"
+  if [ -n "$models" ]; then
+    curl -sf -o /dev/null http://localhost:11434/api/version \
+      || { command -v brew >/dev/null && brew services start ollama >/dev/null 2>&1; sleep 2; }
+    curl -sf -o /dev/null http://localhost:11434/api/version \
+      || { bad "ollama not reachable on :11434 — run: ollama serve"; return 1; }
+    local have m missing=""
+    have="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}')"
+    for m in $models; do
+      # `ollama list` shows untagged names as name:latest.
+      echo "$have" | grep -qxF "$m" || echo "$have" | grep -qxF "$m:latest" || missing="$missing $m"
+    done
+    [ -z "$missing" ] || { bad "ollama model(s) not pulled:$missing — run: ollama pull <model>"; return 1; }
+    ok "ollama up (:11434) — $(echo $models | tr '\n' ' ')"
+  fi
+}
+
+# ---------- per-service start ----------
+start_api() {
+  API_ADDR="$API_ADDR" DATABASE_URL="$DATABASE_URL" \
+    nohup "$API_BIN" >"$LOGS/api.log" 2>&1 & echo $! >"$(pidfile api)"
+  ok "api      → http://localhost:${API_PORT}   (pid $!)"
+}
+start_reasoner() {
+  ( cd "$ROOT/apps/reasoner" && \
+    DATABASE_URL="$DATABASE_URL" TEMPORAL_HOSTPORT="$TEMPORAL_HOSTPORT" TEMPORAL_TASK_QUEUE="$TEMPORAL_TASK_QUEUE" \
+    PIECES_TASK_QUEUE="$PIECES_TASK_QUEUE" \
+    exec ./.venv/bin/python -m reasoner.worker ) >"$LOGS/reasoner.log" 2>&1 & echo $! >"$(pidfile reasoner)"
+  ok "reasoner → Temporal workflows       (pid $!)"
+}
+start_pieces() {
+  pieces_built || {
+    bad "pieces-worker not built (apps/pieces-worker: npm install && npm run build)"
+    return 1
+  }
+  ( cd "$ROOT/apps/pieces-worker" && \
+    DATABASE_URL="$DATABASE_URL" TEMPORAL_HOSTPORT="$TEMPORAL_HOSTPORT" PIECES_TASK_QUEUE="$PIECES_TASK_QUEUE" \
+    exec node dist/worker.js ) >"$LOGS/pieces.log" 2>&1 & echo $! >"$(pidfile pieces)"
+  ok "pieces   → activepieces runtime     (pid $!)"
+}
+start_web() {
+  API_PROXY_TARGET="$API_PROXY_TARGET" \
+    nohup pnpm --filter @agently/web dev >"$LOGS/web.log" 2>&1 & echo $! >"$(pidfile web)"
+  ok "web      → http://localhost:3000    (pid $!)"
+}
+
+# ---------- commands ----------
+cmd_start() {
+  start_infra || return 1
+  ensure_web_deps
+  ensure_reasoner_venv || return 1
+  build_go || return 1
+  say "Stopping any previous app processes…"
+  for n in web pieces reasoner api; do stop_one "$n"; done
+  say "Starting services…"
+  start_api || return 1
+  start_reasoner || return 1
+  start_pieces || return 1
+  start_web || return 1
+  printf "  waiting for API health"
+  if wait_http "http://localhost:${API_PORT}/api/health" 40; then echo; ok "API healthy"; else echo; bad "API didn't answer — see $LOGS/api.log"; fi
+  grep -qE '^GEMINI_API_KEY=.+' "$ROOT/.env" 2>/dev/null || say "  ${c_dim}note: GEMINI_API_KEY not set in .env${c_rst}"
+  grep -qE '^PLANNER_MODEL=(kimi|moonshot)' "$ROOT/.env" 2>/dev/null && ! grep -qE '^(MOONSHOT|KIMI)_API_KEY=.+' "$ROOT/.env" 2>/dev/null && say "  ${c_dim}note: MOONSHOT_API_KEY not set in .env (needed for the kimi-k3 reduce model)${c_rst}"
+  echo
+  say "${c_grn}Agently is up.${c_rst}  UI: http://localhost:3000   Temporal UI: http://localhost:8080"
+  say "  logs: pnpm agently:logs   status: pnpm agently:status   stop: pnpm agently:stop"
+}
+
+cmd_stop() { say "Stopping app processes…"; for n in web pieces reasoner api; do stop_one "$n" && ok "$n stopped"; done; }
+cmd_down() { cmd_stop; say "Stopping Docker…"; docker compose down >/dev/null 2>&1 && ok "docker down"; }
+
+cmd_restart() { # svc
+  local svc="${1:-all}"
+  case "$svc" in
+    api)      build_go || return 1; stop_one api;      start_api ;;
+    reasoner) ensure_reasoner_venv || return 1; stop_one reasoner; start_reasoner ;;
+    pieces)   stop_one pieces; start_pieces ;;
+    web)      stop_one web; start_web ;;
+    all)      cmd_start ;;
+    *)        bad "unknown service '$svc' (api|reasoner|pieces|web|all)"; return 1 ;;
+  esac
+}
+
+cmd_status() {
+  say "Services:"
+  for n in api reasoner pieces web; do
+    if is_up "$n"; then ok "$(printf '%-9s up   (pid %s)' "$n" "$(cat "$(pidfile "$n")")")"; else bad "$(printf '%-9s down' "$n")"; fi
+  done
+  say "Docker:"; docker compose ps --format '  {{.Name}}  {{.Status}}' 2>/dev/null || bad "docker not reachable"
+}
+
+cmd_logs() {
+  local svc="${1:-}"
+  if [ -n "$svc" ]; then tail -f "$LOGS/$svc.log"; else tail -f "$LOGS"/*.log; fi
+}
+
+case "${1:-start}" in
+  start|up)   cmd_start ;;
+  stop)       cmd_stop ;;
+  down)       cmd_down ;;
+  restart)    shift; cmd_restart "${1:-all}" ;;
+  build)      build_go ;;
+  status)     cmd_status ;;
+  logs)       shift; cmd_logs "${1:-}" ;;
+  *)          say "usage: agently.sh {start|stop|down|restart <svc>|build|status|logs [svc]}" ;;
+esac

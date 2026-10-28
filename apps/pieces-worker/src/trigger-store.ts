@@ -1,0 +1,49 @@
+/**
+ * Postgres-backed implementation of the Activepieces `Store` interface for
+ * trigger state (polling cursors, webhook registration ids). Scoped per
+ * (workflow, trigger node) via the piece_trigger_state table (migration 0012).
+ * DATABASE_URL is mandatory; trigger state is never kept in process memory.
+ */
+import { Pool } from 'pg';
+
+export interface TriggerStore {
+  get<T = unknown>(key: string, scope?: unknown): Promise<T | null>;
+  put<T = unknown>(key: string, value: T, scope?: unknown): Promise<T>;
+  delete(key: string, scope?: unknown): Promise<void>;
+}
+
+export type TriggerStoreFactory = (workflowId: string, nodeKey: string) => TriggerStore;
+
+export function makeTriggerStoreFactory(databaseUrl: string | undefined): TriggerStoreFactory {
+  if (!databaseUrl?.trim()) {
+    throw new Error('DATABASE_URL is required — piece trigger state must be durable');
+  }
+  const pool = new Pool({ connectionString: databaseUrl, max: 3 });
+  return (workflowId, nodeKey) => ({
+    async get<T>(key: string): Promise<T | null> {
+      const res = await pool.query(
+        'select value from piece_trigger_state where workflow_id=$1 and node_key=$2 and key=$3',
+        [workflowId, nodeKey, key],
+      );
+      if (res.rowCount === 0) return null;
+      const v = res.rows[0]?.value;
+      return (v ?? null) as T | null;
+    },
+    async put<T>(key: string, value: T): Promise<T> {
+      await pool.query(
+        `insert into piece_trigger_state (workflow_id, node_key, key, value)
+         values ($1, $2, $3, $4)
+         on conflict (workflow_id, node_key, key)
+         do update set value = excluded.value, updated_at = now()`,
+        [workflowId, nodeKey, key, JSON.stringify(value ?? null)],
+      );
+      return value;
+    },
+    async delete(key: string): Promise<void> {
+      await pool.query(
+        'delete from piece_trigger_state where workflow_id=$1 and node_key=$2 and key=$3',
+        [workflowId, nodeKey, key],
+      );
+    },
+  });
+}

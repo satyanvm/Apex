@@ -1,0 +1,27 @@
+{
+  "name": "agently",
+  "private": true,
+  "version": "0.0.0",
+  "description": "AI Agent Hosting Platform — deploy, run, and monitor AI agents.",
+  "scripts": {
+    "agently": "bash scripts/agently.sh start",
+    "agently:stop": "bash scripts/agently.sh stop",
+    "agently:down": "bash scripts/agently.sh down",
+    "agently:status": "bash scripts/agently.sh status",
+    "agently:logs": "bash scripts/agently.sh logs",
+    "agently:api": "bash scripts/agently.sh restart api",
+    "agently:reasoner": "bash scripts/agently.sh restart reasoner",
+    "agently:pieces": "bash scripts/agently.sh restart pieces",
+    "agently:web": "bash scripts/agently.sh restart web",
+    "dev:web": "pnpm --filter @agently/web dev",
+    "dev:api": "cd apps/api && go run ./cmd/server",
+    "build": "pnpm -r build",
+    "build:api": "cd apps/api && go build -o ../../bin/api ./cmd/server",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "packageManager": "pnpm@10.19.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
