@@ -72,6 +72,11 @@ class RunNodeResult:
 
 
 @dataclass
+class CancelCleanupInput:
+    run_id: str
+
+
+@dataclass
 class SkipNodeInput:
     run_id: str
     agent_id: str
@@ -201,6 +206,17 @@ async def set_progress(inp: ProgressInput) -> None:
 @activity.defn
 async def finish_run(inp: FinishInput) -> None:
     await db.finish_run(inp.run_id, inp.status, inp.step, error=(inp.error or None))
+    obs.flush()
+
+
+@activity.defn
+async def stop_canceled_run(inp: CancelCleanupInput) -> None:
+    """The workflow was canceled (dispatcher.relay_cancellations): mark the
+    nodes that never finished as stopped. The run row itself is already
+    canceled by the API."""
+    nodes = await db.stop_canceled_run(inp.run_id)
+    await db.append_log(inp.run_id, "warn", "system", "runtime",
+                        f"Run canceled: stopped {nodes} unfinished node(s)")
     obs.flush()
 
 
@@ -366,5 +382,5 @@ async def record_piece_result(inp: RecordPieceInput) -> RunNodeResult:
 # Exported so the worker can register every activity in one place.
 ALL_ACTIVITIES = [
     load_graph, run_node, skip_node, add_edge, set_progress, finish_run,
-    prepare_piece_node, record_piece_result,
+    prepare_piece_node, record_piece_result, stop_canceled_run,
 ]
