@@ -13,6 +13,8 @@ Important current migrations:
 - `0012_piece_trigger_state.sql`: durable Activepieces trigger cursors/state.
 - `0013_drop_retired_execution_columns.sql`: removes the retired run engine and
   Postgres-queue lease columns.
+- `0014_run_cancel_relay.sql`: `runs.cancel_signaled_at`, so the reasoner relays
+  each run cancellation to its Temporal workflow once.
 
 Apply an upgrade without resetting data:
 
