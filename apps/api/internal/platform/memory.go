@@ -59,8 +59,6 @@ type store struct {
 	activity     []domain.ActivityEvent
 	integrations []domain.Integration
 	credentials  []domain.Credential
-	// failureHandled marks failed runs the failure watcher already claimed.
-	failureHandled map[domain.RunId]bool
 }
 
 // NewMemoryRepositories builds a complete in-memory Repositories from seed data.
@@ -215,9 +213,6 @@ func (r *workflowRepo) Update(id domain.WorkflowId, patch WorkflowPatch) (domain
 			if patch.DefaultInput != nil {
 				w.DefaultInput = *patch.DefaultInput
 			}
-			if patch.Settings != nil {
-				w.Settings = *patch.Settings
-			}
 			if patch.UpdatedAt != nil {
 				w.UpdatedAt = *patch.UpdatedAt
 			}
@@ -338,25 +333,6 @@ func (r *runRepo) Update(id domain.RunId, patch RunPatch) (domain.Run, error) {
 		}
 	}
 	return domain.Run{}, domain.NotFound("run")
-}
-
-func (r *runRepo) ClaimFailures(limit int) []domain.Run {
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	if r.s.failureHandled == nil {
-		r.s.failureHandled = map[domain.RunId]bool{}
-	}
-	var out []domain.Run
-	for _, run := range r.s.runs {
-		if len(out) >= limit {
-			break
-		}
-		if run.Status == domain.RunFailed && !r.s.failureHandled[run.ID] {
-			r.s.failureHandled[run.ID] = true
-			out = append(out, run)
-		}
-	}
-	return out
 }
 
 func (r *runRepo) NextNumber(workflowID domain.WorkflowId) int {

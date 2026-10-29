@@ -46,6 +46,3 @@ __pycache__/
 # build output and local logs
 /bin/
 /logs/
-
-# local env backups (contain live keys)
-.env.bak*

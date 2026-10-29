@@ -1,6 +1,7 @@
 // Command server runs the Agently HTTP API: a single self-contained Go binary
 // that serves the same contract the TypeScript backend served. It assembles the
-// in-memory seeded platform and listens on API_ADDR (default :8080).
+// in-memory seeded platform and listens on API_ADDR (default :8090;
+// :8080 belongs to the Temporal UI in docker-compose.yml).
 package main
 
 import (
@@ -83,13 +84,6 @@ func main() {
 	}
 	defer pool.Close()
 	logger.Info("connected to Postgres", "store", "postgres")
-	schemaCtx, schemaCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	err = platform.EnsureSchema(schemaCtx, pool)
-	schemaCancel()
-	if err != nil {
-		logger.Error("could not upgrade the database schema", "error", err.Error())
-		os.Exit(1)
-	}
 	sealCtx, sealCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	sealed, err := platform.EncryptPlaintextCredentials(sealCtx, pool)
 	sealCancel()
@@ -119,15 +113,9 @@ func main() {
 		go plat.NewPiecesPoller().Start(schedCtx)
 	}
 
-	// Failed runs: start the workflow's error workflow and send its alerts
-	// (services/failures.go). Runs alongside the scheduler, same off switch.
-	if os.Getenv("SCHEDULER") != "0" {
-		go plat.NewFailureWatcher().Start(schedCtx)
-	}
-
 	addr := os.Getenv("API_ADDR")
 	if addr == "" {
-		addr = ":8080"
+		addr = ":8090"
 	}
 
 	srv := &http.Server{

@@ -39,17 +39,16 @@ async def _dispatch_once(client: Client) -> None:
     for run in runs:
         run_id = run["id"]
         workflow_id = f"agently-run-{run_id}"
-        run_input = dict(run.get("input") or {})
-        # Builder test-run options (apps/api node_data.go): never template input.
-        exec_opts = run_input.pop("__exec", None) or {}
         params = {
             "run_id": run_id,
             "slug": run.get("slug", ""),
-            "input": run_input,
-            "exec": exec_opts,
+            "input": run.get("input") or {},
             # Deterministic workflow input (never read env in workflow code):
             # where the Node pieces worker listens for execute_piece.
             "pieces_task_queue": CONFIG.pieces_task_queue,
+            # Likewise the concurrency cap: a replay must see the value the run
+            # started with, whatever the env says now.
+            "max_parallel": CONFIG.run_max_parallel,
         }
         # Route composed (user-built) runs to the per-node DynamicWorkflow so each
         # node is its own durable Temporal unit; everything else runs the static

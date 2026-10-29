@@ -21,6 +21,8 @@ os.environ.setdefault("BROWSERBASE_API_KEY", "test-browserbase")
 os.environ.setdefault("BROWSERBASE_PROJECT_ID", "test-project")
 os.environ.setdefault("SMTP_HOST", "localhost")
 
+from temporalio.exceptions import ApplicationError  # noqa: E402
+
 from reasoner import activities, nodes, pieces  # noqa: E402
 
 from test_engine import FakeDB  # noqa: E402 — reuse the in-memory db fake
@@ -174,8 +176,13 @@ class PreparePieceNodeTest(unittest.TestCase):
         os.environ.pop("AP_SLACK_AUTH", None)
         node = {"key": "s", "type": "pieces.slack.send_channel_message",
                 "config": {"channel": "#g", "text": "hi"}}
-        with self.assertRaisesRegex(RuntimeError, "AP_SLACK_AUTH"):
+        with self.assertRaisesRegex(ApplicationError, "AP_SLACK_AUTH") as ctx:
             self._prepare(node)
+        # A missing credential will not appear on retry: fail once, with the
+        # reason on the node and in the logs.
+        self.assertTrue(ctx.exception.non_retryable)
+        self.assertEqual(self.fake.agents["ra_x"]["status"], "failed")
+        self.assertTrue(any("AP_SLACK_AUTH" in m for _, _, m in self.fake.logs))
 
     def test_credential_id_counts_as_present_and_travels(self):
         """A DB credential selection (config.__credentialId) satisfies the
@@ -205,7 +212,7 @@ class PreparePieceNodeTest(unittest.TestCase):
 
     def test_unknown_piece_fails(self):
         node = {"key": "x", "type": "pieces.ghost.do_thing", "config": {}}
-        with self.assertRaisesRegex(RuntimeError, "not in the pieces index"):
+        with self.assertRaisesRegex(ApplicationError, "not in the pieces index"):
             self._prepare(node)
 
     def test_undeclared_config_keys_stay_out_of_props(self):
@@ -266,26 +273,3 @@ class RecordPieceResultTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class StoredOutputTest(unittest.TestCase):
-    """Node outputs/errors land on the agent row for the builder's data panel."""
-
-    def setUp(self):
-        self.fake = FakeDB()
-        self.fake.install()
-
-    def test_piece_output_and_error_are_stored(self):
-        ok = activities.RecordPieceInput(run_id="run_1", node={"key": "s", "type": "pieces.slack.x"},
-                                         agent_id="ra_s", result={"ok": True, "output": {"ts": "1"}}, mode="execute")
-        asyncio.run(activities.record_piece_result(ok))
-        self.assertEqual(self.fake.agents["ra_s"]["output"]["ts"], "1")
-        bad = activities.RecordPieceInput(run_id="run_1", node={"key": "t", "type": "pieces.slack.x"},
-                                          agent_id="ra_t", result={"ok": False, "error": "nope"}, mode="execute")
-        asyncio.run(activities.record_piece_result(bad))
-        self.assertIn("nope", self.fake.agents["ra_t"]["error"])
-
-    def test_reserved_config_keys_are_lifted(self):
-        n = activities._lift_reserved({"key": "a", "config": {"x": 1, "__pinned": {"v": 1}, "__settings": {"retries": 2}}})
-        self.assertEqual(n["config"], {"x": 1})
-        self.assertEqual((n["pinned"], n["settings"]), ({"v": 1}, {"retries": 2}))

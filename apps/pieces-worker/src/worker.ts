@@ -31,17 +31,11 @@ async function main(): Promise<void> {
   console.log(
     `pieces registry: ${registry.pieces.size} pieces, ${actionCount} actions loaded`,
   );
-  // A broken piece (e.g. a native binding with a missing shared library) is
-  // logged and skipped so the rest of the registry keeps serving; its actions
-  // fail with PieceLoadFailed and the load error (see execute.ts).
   for (const f of registry.failures) {
-    console.error(`piece failed to load: ${f.packageName}: ${f.error}`);
+    console.warn(`piece failed to load: ${f.packageName}: ${f.error}`);
   }
   if (registry.failures.length > 0) {
-    console.error(
-      `pieces registry: skipped ${registry.failures.length} broken package(s): ` +
-      registry.failures.map((f) => f.packageName).join(', '),
-    );
+    throw new Error(`pieces registry failed to load ${registry.failures.length} package(s)`);
   }
   if (registry.pieces.size === 0) {
     throw new Error('no Activepieces packages installed — build the pieces registry before starting');
