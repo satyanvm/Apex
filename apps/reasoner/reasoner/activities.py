@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from . import db, engine, obs, pieces
 from .nodes import NodeContext, render_tpl, split_credential
@@ -59,8 +60,6 @@ class RunNodeInput:
     run_input: dict[str, Any]
     # Loop fan-out template roots ({"item": …, "loop": {…}}); empty otherwise.
     extra: dict[str, Any] = field(default_factory=dict)
-    # 1-based attempt number (per-node retries, workflow.py); stored on the row.
-    attempt: int = 1
 
 
 @dataclass
@@ -77,31 +76,6 @@ class SkipNodeInput:
     run_id: str
     agent_id: str
     key: str
-    # Why it was skipped; empty = pruned by an upstream condition.
-    reason: str = ""
-
-
-@dataclass
-class UseOutputInput:
-    """Serve a node a known output instead of running it: pinned data, or the
-    output reused from an earlier run during a builder "Run step"."""
-    run_id: str
-    agent_id: str
-    key: str
-    output: dict[str, Any]
-    source: str  # "pinned" | "reused"
-
-
-@dataclass
-class FailNodeInput:
-    """Record a node failure the node's own activity could not (it timed out,
-    or the run continues past it with continue-on-fail)."""
-    run_id: str
-    agent_id: str
-    key: str
-    error: str
-    attempts: int = 1
-    continued: bool = False
 
 
 @dataclass
@@ -156,28 +130,9 @@ class RecordPieceInput:
     agent_id: str
     result: dict[str, Any]
     mode: str  # "execute" (execute_piece return) | "trigger"
-    attempt: int = 1
 
 
 # ─────────────────────────── activities ───────────────────────────
-
-# Builder-only config keys the workflow reads off the node, never templates.
-PINNED_KEY = "__pinned"      # pinned output (dict) served in test runs
-SETTINGS_KEY = "__settings"  # {retries, retryWaitSec, timeoutSec, continueOnFail}
-
-
-def _lift_reserved(node: dict[str, Any]) -> dict[str, Any]:
-    """Move __pinned / __settings out of config onto the node itself."""
-    cfg = dict(node.get("config") or {})
-    pinned = cfg.pop(PINNED_KEY, None)
-    settings = cfg.pop(SETTINGS_KEY, None)
-    node["config"] = cfg
-    if isinstance(pinned, dict):
-        node["pinned"] = pinned
-    if isinstance(settings, dict):
-        node["settings"] = settings
-    return node
-
 
 @activity.defn
 async def load_graph(inp: LoadGraphInput) -> LoadGraphResult:
@@ -197,7 +152,7 @@ async def load_graph(inp: LoadGraphInput) -> LoadGraphResult:
     prior = await db.fetch_agent_statuses(inp.run_id)
     return LoadGraphResult(
         dynamic=True,
-        graph=[_lift_reserved(dict(n)) for n in plan.ordered],  # already topo-ordered
+        graph=[dict(n) for n in plan.ordered],  # already topo-ordered
         ordered_keys=[n["key"] for n in plan.ordered],
         agent_ids=agent_ids,
         prior_status=prior,
@@ -219,49 +174,18 @@ async def run_node(inp: RunNodeInput) -> RunNodeResult:
         )
     except Exception as exc:  # noqa: BLE001 — surface as data, not an activity crash
         await db.set_agent_status(inp.agent_id, "failed", summary=str(exc)[:280])
-        await db.set_agent_result(inp.agent_id, error=str(exc), attempts=inp.attempt)
         await db.append_log(inp.run_id, "error", "system", inp.node["key"], f"Node failed: {exc}")
         return RunNodeResult(failed=True, error=str(exc))
 
     output = result.output or {}
-    await db.set_agent_result(inp.agent_id, output=output, attempts=inp.attempt)
     gate_open = engine.is_gate_open(inp.node, output)
     return RunNodeResult(output=output, gate_open=gate_open)
 
 
 @activity.defn
 async def skip_node(inp: SkipNodeInput) -> None:
-    """Mark a node skipped (pruned by an upstream gate / all-deps-skipped, or
-    outside a step run's target)."""
-    await engine.mark_skipped(inp.run_id, inp.agent_id, inp.key, reason=inp.reason)
-
-
-@activity.defn
-async def use_output(inp: UseOutputInput) -> RunNodeResult:
-    """Mark a node succeeded with a known output (pinned / reused) — no execution."""
-    label = "Pinned data" if inp.source == "pinned" else "Reused output from the last run"
-    await db.set_agent_status(inp.agent_id, "succeeded", summary=label)
-    await db.set_agent_result(inp.agent_id, output=inp.output, attempts=0)
-    await db.append_log(inp.run_id, "info", "system", inp.key, f"{label} — not executed")
-    return RunNodeResult(output=inp.output, gate_open=True)
-
-
-@activity.defn
-async def fail_node(inp: FailNodeInput) -> None:
-    status = "failed"
-    summary = f"Failed: {_clip_summary(inp.error, 200)}"
-    if inp.continued:
-        summary += " (continued)"
-    await db.set_agent_status(inp.agent_id, status, summary=summary)
-    await db.set_agent_result(
-        inp.agent_id,
-        output={"error": inp.error} if inp.continued else None,
-        error=inp.error,
-        attempts=inp.attempts,
-    )
-    level = "warn" if inp.continued else "error"
-    note = " — continuing (continue on fail)" if inp.continued else ""
-    await db.append_log(inp.run_id, level, "system", inp.key, f"Node failed after {inp.attempts} attempt(s): {inp.error}{note}")
+    """Mark a node skipped (pruned by an upstream gate / all-deps-skipped)."""
+    await engine.mark_skipped(inp.run_id, inp.agent_id, inp.key)
 
 
 @activity.defn
@@ -294,6 +218,24 @@ def _clip_summary(s: str, n: int = 280) -> str:
 
 @activity.defn
 async def prepare_piece_node(inp: PreparePieceInput) -> PreparePieceResult:
+    """Resolve a piece node (see _prepare_piece_node), failing it for good on a
+    configuration error.
+
+    A missing credential, an unknown piece or a bad template reference will not
+    fix itself on retry, so the node is marked failed with the reason and the
+    activity fails non-retryably carrying that message. Anything else (a DB
+    hiccup) propagates and is retried as before.
+    """
+    try:
+        return await _prepare_piece_node(inp)
+    except (RuntimeError, KeyError, ValueError, TypeError) as exc:
+        reason = str(exc) or type(exc).__name__
+        await db.set_agent_status(inp.agent_id, "failed", summary=reason[:280])
+        await db.append_log(inp.run_id, "error", "system", inp.node["key"], f"Node failed: {reason}")
+        raise ApplicationError(reason, type="PieceNodeConfigError", non_retryable=True) from exc
+
+
+async def _prepare_piece_node(inp: PreparePieceInput) -> PreparePieceResult:
     """Resolve a piece node into an execute_piece payload or trigger event.
 
     Mirrors the head of engine.execute_one_node (status → running, log line) so
@@ -415,16 +357,14 @@ async def record_piece_result(inp: RecordPieceInput) -> RunNodeResult:
             f"{inp.node.get('type')} failed ({error_type}): {error}",
         )
         await db.set_agent_status(inp.agent_id, "failed", summary=summary)
-        await db.set_agent_result(inp.agent_id, error=f"{error_type}: {error}", attempts=inp.attempt)
         return RunNodeResult(failed=True, error=f"{inp.node.get('type')}: {error_type}: {error}")
 
     await db.set_agent_status(inp.agent_id, "succeeded", summary=summary)
-    await db.set_agent_result(inp.agent_id, output=output, attempts=inp.attempt)
     return RunNodeResult(output=output, gate_open=True)
 
 
 # Exported so the worker can register every activity in one place.
 ALL_ACTIVITIES = [
     load_graph, run_node, skip_node, add_edge, set_progress, finish_run,
-    prepare_piece_node, record_piece_result, use_output, fail_node,
+    prepare_piece_node, record_piece_result,
 ]

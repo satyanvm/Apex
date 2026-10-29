@@ -61,6 +61,10 @@ type CatalogNode struct {
 	Outputs     []string            `json:"outputs"`
 	Credentials []CatalogCredential `json:"credentials"`
 	Cluster     string              `json:"-"` // filled at load from the file
+	// Pieces only: the auth type (oauth2, secret_text, …) and whether the piece
+	// runs without it. Read by the run preflight.
+	AuthType     string `json:"-"`
+	AuthOptional bool   `json:"-"`
 }
 
 type catalogFile struct {
@@ -204,7 +208,7 @@ func clusterIndex(f catalogFile) string {
 
 // nodeSchema renders one node's full schema for the reduce prompt: everything the
 // model needs to fill the node correctly and reference its outputs downstream.
-func nodeSchema(n CatalogNode, has func(CatalogNode, string) bool) string {
+func nodeSchema(n CatalogNode) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "### %s (%s, runtime=%s)\n%s\n", n.ID, n.Label, n.Runtime, n.Description)
 	if len(n.Config) > 0 {
@@ -230,18 +234,10 @@ func nodeSchema(n CatalogNode, has func(CatalogNode, string) bool) string {
 	}
 	if len(n.Credentials) > 0 {
 		keys := make([]string, len(n.Credentials))
-		configured := true
 		for i, c := range n.Credentials {
 			keys[i] = c.Key
-			if has == nil || !has(n, c.Key) {
-				configured = false
-			}
 		}
-		state := "NOT CONFIGURED by the user — only use this node if the request names this service"
-		if configured {
-			state = "CONFIGURED"
-		}
-		fmt.Fprintf(&b, "credentials: %s — %s\n", strings.Join(keys, ", "), state)
+		fmt.Fprintf(&b, "credentials (required at run time; missing values fail the node): %s\n", strings.Join(keys, ", "))
 	}
 	return b.String()
 }

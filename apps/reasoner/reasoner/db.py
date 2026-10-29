@@ -12,6 +12,7 @@ volume a single run produces.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -92,21 +93,6 @@ async def claim_queued_runs(limit: int = 10) -> list[dict[str, Any]]:
 
 
 # ─────────────────────────── credentials ───────────────────────────
-
-async def fetch_credential_row(credential_id: str) -> tuple[str, dict[str, Any]] | None:
-    """Like fetch_credential_data, plus the credential type (for OAuth refresh)."""
-    if not credential_id:
-        return None
-    async with _conn() as conn:
-        cur = await conn.execute(
-            "select type, data from credentials where id = %s", (credential_id,)
-        )
-        row = await cur.fetchone()
-        if not row:
-            return None
-        data = row[1]
-        return str(row[0] or ""), (open_credential_data(data) if isinstance(data, dict) else {})
-
 
 async def fetch_credential_data(credential_id: str) -> dict[str, Any] | None:
     """Return the secret key/values of a stored credential, or None if unknown.
@@ -251,10 +237,15 @@ async def set_run_running(run_id: str, current_step: str) -> None:
 
 
 async def set_run_progress(run_id: str, steps_done: int, steps_total: int, current_step: str) -> None:
+    # Nodes finish concurrently, so progress writes can land out of order; never
+    # let a late, smaller count overwrite a newer one.
     async with _conn() as conn:
         await conn.execute(
-            "update runs set steps_done = %s, steps_total = %s, current_step = %s where id = %s",
-            (steps_done, steps_total, current_step, run_id),
+            """
+            update runs set steps_done = %s, steps_total = %s, current_step = %s
+             where id = %s and coalesce(steps_done, 0) <= %s
+            """,
+            (steps_done, steps_total, current_step, run_id, steps_done),
         )
 
 
@@ -315,11 +306,11 @@ async def upsert_agent(
     async with _conn() as conn:
         await conn.execute(
             """
-            insert into run_agents (id, run_id, node_key, name, role, model, status, depends_on, col, "row", summary, metrics)
-            values (%s, %s, %s, %s, %s, %s, 'idle', %s, %s, %s, '', '{}'::jsonb)
+            insert into run_agents (id, run_id, name, role, model, status, depends_on, col, "row", summary, metrics)
+            values (%s, %s, %s, %s, %s, 'idle', %s, %s, %s, '', '{}'::jsonb)
             on conflict (id) do nothing
             """,
-            (agent_id, run_id, key, name, role, model, dep_ids, col, row),
+            (agent_id, run_id, name, role, model, dep_ids, col, row),
         )
     return agent_id
 
@@ -341,9 +332,17 @@ async def fetch_agent_statuses(run_id: str) -> dict[str, str]:
 def _stable_agent_id(run_id: str, key: str) -> str:
     """Deterministic per-(run,node) agent id so replays don't duplicate rows."""
     # run ids look like run_<20>; derive a stable, schema-shaped agent id.
-    suffix = run_id.split("_", 1)[-1][:12]
-    safe_key = "".join(c for c in key if c in _BASE36)[:6] or "node"
-    return f"ra_{suffix}{safe_key}".ljust(23, "0")[:23]
+    # The key part is a hash of the WHOLE key. It used to be the key's first six
+    # characters, so langgraph_pypi, langgraph_profile and langgraph_sentiment
+    # all landed on one row: the run view showed a fraction of the nodes, and a
+    # resume trusted one finished sibling for all of them.
+    suffix = run_id.split("_", 1)[-1][:12].ljust(12, "0")
+    n = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big")
+    digest = ""
+    for _ in range(8):
+        n, r = divmod(n, 36)
+        digest += _BASE36[r]
+    return f"ra_{suffix}{digest}"
 
 
 async def set_agent_status(agent_id: str, status: str, summary: str | None = None) -> None:
@@ -362,38 +361,6 @@ async def set_agent_status(agent_id: str, status: str, summary: str | None = Non
             await conn.execute(
                 "update run_agents set status = %s where id = %s", (status, agent_id)
             )
-
-
-# Node outputs larger than this are stored as a truncated preview so one huge
-# scrape can't bloat the run row the builder loads.
-_MAX_OUTPUT_BYTES = 512 * 1024
-
-
-def _clip_output(output: Any) -> str:
-    raw = json.dumps(output, default=str)
-    if len(raw) <= _MAX_OUTPUT_BYTES:
-        return raw
-    return json.dumps({"__truncated": True, "bytes": len(raw), "preview": raw[:_MAX_OUTPUT_BYTES]})
-
-
-async def set_agent_result(
-    agent_id: str,
-    output: Any = None,
-    error: str | None = None,
-    attempts: int | None = None,
-) -> None:
-    """Store a node's full output / error for the builder's data inspector."""
-    async with _conn() as conn:
-        await conn.execute(
-            """
-            update run_agents
-               set output = coalesce(%s::jsonb, output),
-                   error = %s,
-                   attempts = coalesce(%s, attempts)
-             where id = %s
-            """,
-            (None if output is None else _clip_output(output), error, attempts, agent_id),
-        )
 
 
 async def add_message(run_id: str, from_agent_id: str, to_agent_id: str, label: str) -> None:
