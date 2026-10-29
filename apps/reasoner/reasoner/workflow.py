@@ -95,12 +95,43 @@ class ReasoningWorkflow:
         return {"run_id": run_id, "done": bool(result.get("done", False))}
 
 
+def _activity(*args: Any, **kwargs: Any):
+    """workflow.execute_activity that ABANDONS, rather than cancels, an activity
+    still running when the run is canceled. These activities don't heartbeat,
+    so a cancel request could never interrupt one anyway; sending it only
+    races the activity's own completion (Temporal rejects a cancel for an
+    activity that just finished, and the workflow task fails). Abandoned, the
+    in-flight call finishes on its own, its result is ignored, and the workflow
+    stops at once. Cancellation type is SDK-side only: it changes no command a
+    non-canceled run records, so replay is unaffected."""
+    kwargs.setdefault("cancellation_type", workflow.ActivityCancellationType.ABANDON)
+    return workflow.execute_activity(*args, **kwargs)
+
+
 @workflow.defn
 class DynamicWorkflow:
     """Per-node orchestrator for user-composed DAGs (see module docstring)."""
 
     @workflow.run
     async def run(self, params: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return await self._run(params)
+        except asyncio.CancelledError:
+            # A person canceled the run (the API marks it canceled; the
+            # dispatcher's relay_cancellations asks Temporal to cancel this
+            # workflow). Temporal delivers that as CancelledError at whatever
+            # the workflow was awaiting, so nothing after it starts. Clean up,
+            # then re-raise so Temporal records the workflow as Cancelled
+            # rather than completed.
+            await _activity(
+                activities.stop_canceled_run,
+                activities.CancelCleanupInput(run_id=params["run_id"]),
+                start_to_close_timeout=_IO_TIMEOUT,
+                retry_policy=_NODE_RETRY,
+            )
+            raise
+
+    async def _run(self, params: dict[str, Any]) -> dict[str, Any]:
         run_id = params["run_id"]
         run_input = params.get("input", {})
         # Which task queue the Node pieces worker polls (contract §3). Part of the
@@ -109,7 +140,7 @@ class DynamicWorkflow:
         self._pieces_queue: str = params.get("pieces_task_queue") or _DEFAULT_PIECES_QUEUE
 
         # 1) Resolve the graph + seed agents OUTSIDE the workflow (one activity).
-        loaded = await workflow.execute_activity(
+        loaded = await _activity(
             activities.load_graph,
             activities.LoadGraphInput(run_id=run_id),
             start_to_close_timeout=_IO_TIMEOUT,
@@ -155,7 +186,7 @@ class DynamicWorkflow:
             if plan.should_skip(node, skipped):
                 skipped.add(key)
                 skipped.update(plan.descendants(key, dependents))
-                await workflow.execute_activity(
+                await _activity(
                     activities.skip_node,
                     activities.SkipNodeInput(run_id=run_id, agent_id=agent_id, key=key),
                     start_to_close_timeout=_IO_TIMEOUT,
@@ -182,7 +213,7 @@ class DynamicWorkflow:
             )
 
             if result.failed:
-                await workflow.execute_activity(
+                await _activity(
                     activities.finish_run,
                     activities.FinishInput(run_id=run_id, status="failed", step="Failed", error=result.error),
                     start_to_close_timeout=_IO_TIMEOUT,
@@ -203,7 +234,7 @@ class DynamicWorkflow:
                     run_id, key, body_keys, ordered, agent_ids, outputs, dependents, run_input,
                 )
                 if error is not None:
-                    await workflow.execute_activity(
+                    await _activity(
                         activities.finish_run,
                         activities.FinishInput(run_id=run_id, status="failed", step="Failed", error=error),
                         start_to_close_timeout=_IO_TIMEOUT,
@@ -218,7 +249,7 @@ class DynamicWorkflow:
             # Hand-off edges for the live graph view (one activity per edge keeps
             # each write independently durable and idempotent).
             for child_key in dependents[key]:
-                await workflow.execute_activity(
+                await _activity(
                     activities.add_edge,
                     activities.EdgeInput(
                         run_id=run_id, from_agent_id=agent_id,
@@ -232,7 +263,7 @@ class DynamicWorkflow:
             await self._progress(run_id, done, total, f"Ran {key}")
 
         # 3) Finish the run.
-        await workflow.execute_activity(
+        await _activity(
             activities.finish_run,
             activities.FinishInput(run_id=run_id, status="succeeded", step="Completed"),
             start_to_close_timeout=_IO_TIMEOUT,
@@ -284,7 +315,7 @@ class DynamicWorkflow:
                 if plan.should_skip(node, skipped):
                     skipped.add(key)
                     skipped.update(plan.descendants(key, dependents))
-                    await workflow.execute_activity(
+                    await _activity(
                         activities.skip_node,
                         activities.SkipNodeInput(run_id=run_id, agent_id=agent_id, key=key),
                         start_to_close_timeout=_IO_TIMEOUT,
@@ -325,7 +356,7 @@ class DynamicWorkflow:
                     skipped.update(plan.descendants(key, dependents))
 
                 for child_key in dependents[key]:
-                    await workflow.execute_activity(
+                    await _activity(
                         activities.add_edge,
                         activities.EdgeInput(
                             run_id=run_id, from_agent_id=agent_id,
@@ -344,7 +375,7 @@ class DynamicWorkflow:
 
         if failures:
             failed_key, error = failures[0]
-            await workflow.execute_activity(
+            await _activity(
                 activities.finish_run,
                 activities.FinishInput(run_id=run_id, status="failed", step="Failed", error=error),
                 start_to_close_timeout=_IO_TIMEOUT,
@@ -352,7 +383,7 @@ class DynamicWorkflow:
             )
             return {"run_id": run_id, "done": False, "failed_node": failed_key}
 
-        await workflow.execute_activity(
+        await _activity(
             activities.finish_run,
             activities.FinishInput(run_id=run_id, status="succeeded", step="Completed"),
             start_to_close_timeout=_IO_TIMEOUT,
@@ -420,7 +451,7 @@ class DynamicWorkflow:
         outputs[key]["results"] = results
         if not items:
             for bkey in body_keys:
-                await workflow.execute_activity(
+                await _activity(
                     activities.skip_node,
                     activities.SkipNodeInput(run_id=run_id, agent_id=agent_ids[bkey], key=bkey),
                     start_to_close_timeout=_IO_TIMEOUT,
@@ -465,7 +496,7 @@ class DynamicWorkflow:
         """
         if str(node.get("type", "")).startswith(_PIECE_PREFIX):
             return await self._run_piece_node(run_id, node, agent_id, upstream, run_input, extra)
-        return await workflow.execute_activity(
+        return await _activity(
             activities.run_node,
             activities.RunNodeInput(
                 run_id=run_id, node=node, agent_id=agent_id,
@@ -491,7 +522,7 @@ class DynamicWorkflow:
         records the queue/provider reason before the workflow returns.
         """
         try:
-            prep = await workflow.execute_activity(
+            prep = await _activity(
                 activities.prepare_piece_node,
                 activities.PreparePieceInput(
                     run_id=run_id, node=node, agent_id=agent_id,
@@ -507,7 +538,7 @@ class DynamicWorkflow:
 
         if prep.mode == "execute":
             try:
-                result = await workflow.execute_activity(
+                result = await _activity(
                     "execute_piece",           # by name: implemented by the Node worker
                     prep.payload,
                     task_queue=self._pieces_queue,
@@ -526,7 +557,7 @@ class DynamicWorkflow:
         else:
             result, mode = prep.result, "trigger"
 
-        return await workflow.execute_activity(
+        return await _activity(
             activities.record_piece_result,
             activities.RecordPieceInput(
                 run_id=run_id, node=node, agent_id=agent_id, result=result, mode=mode,
@@ -536,7 +567,7 @@ class DynamicWorkflow:
         )
 
     async def _progress(self, run_id: str, done: int, total: int, step: str) -> None:
-        await workflow.execute_activity(
+        await _activity(
             activities.set_progress,
             activities.ProgressInput(run_id=run_id, done=done, total=total, step=step),
             start_to_close_timeout=_IO_TIMEOUT,

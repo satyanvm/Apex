@@ -26,7 +26,8 @@ os.environ.setdefault("BROWSERBASE_PROJECT_ID", "test-project")
 os.environ.setdefault("SMTP_HOST", "localhost")
 
 from temporalio import activity  # noqa: E402
-from temporalio.client import WorkflowHistory  # noqa: E402
+from temporalio.client import WorkflowFailureError, WorkflowHistory  # noqa: E402
+from temporalio.exceptions import CancelledError  # noqa: E402
 from temporalio.testing import WorkflowEnvironment  # noqa: E402
 from temporalio.worker import Replayer, Worker  # noqa: E402
 
@@ -45,7 +46,8 @@ def node(key, deps=(), type_="agent.llm", **config):
 class Recorder:
     """Stub activities sharing one log, so a test can see what ran and when."""
 
-    def __init__(self, graph, *, delay=0.2, delays=None, fail=(), closed_gates=(), items=None, prior=None):
+    def __init__(self, graph, *, delay=0.2, delays=None, fail=(), closed_gates=(), items=None, prior=None,
+                 hold=()):
         self.graph = plan.build_plan(graph).ordered
         self.delay = delay
         self.delays = delays or {}  # per-key override of `delay`
@@ -56,6 +58,9 @@ class Recorder:
         self.events: list[tuple[str, str]] = []  # ("start"|"end", key)
         self.skipped: list[str] = []
         self.finished: list[tuple[str, str]] = []
+        self.cleaned: list[str] = []  # stop_canceled_run calls
+        # Nodes that block until released, to cancel a run while they execute.
+        self.hold = {k: asyncio.Event() for k in hold}
         self.running = 0
         self.peak = 0
 
@@ -79,7 +84,10 @@ class Recorder:
             rec.running += 1
             rec.peak = max(rec.peak, rec.running)
             try:
-                await asyncio.sleep(rec.delays.get(key, rec.delay))
+                if key in rec.hold:
+                    await rec.hold[key].wait()
+                else:
+                    await asyncio.sleep(rec.delays.get(key, rec.delay))
             finally:
                 rec.running -= 1
                 rec.events.append(("end", key))
@@ -112,7 +120,12 @@ class Recorder:
         async def finish_run(inp: acts.FinishInput) -> None:
             rec.finished.append((inp.status, inp.error))
 
-        return [load_graph, run_node, prepare_piece_node, skip_node, add_edge, set_progress, finish_run]
+        @activity.defn(name="stop_canceled_run")
+        async def stop_canceled_run(inp: acts.CancelCleanupInput) -> None:
+            rec.cleaned.append(inp.run_id)
+
+        return [load_graph, run_node, prepare_piece_node, skip_node, add_edge, set_progress, finish_run,
+                stop_canceled_run]
 
     def started(self) -> list[str]:
         return [k for e, k in self.events if e == "start"]
@@ -137,6 +150,34 @@ async def run_workflow(env, rec: Recorder, params: dict) -> tuple[dict, Workflow
         result = await handle.result()
         history = await handle.fetch_history()
     return result, history
+
+
+async def cancel_while(env, rec: Recorder, params: dict, running: str) -> WorkflowHistory:
+    """Start the workflow, cancel it once `running` (a held node) has started,
+    and expect it to end as Cancelled. Releases the held node afterwards, as a
+    node still executing when the cancel lands finishes on its own."""
+    async with Worker(env.client, task_queue=QUEUE, workflows=[DynamicWorkflow], activities=rec.activities()):
+        handle = await env.client.start_workflow(
+            DynamicWorkflow.run, {"run_id": "run_test", **params},
+            id=f"wf-{uuid.uuid4()}", task_queue=QUEUE,
+        )
+        for _ in range(500):
+            if running in rec.started():
+                break
+            await asyncio.sleep(0.01)
+        else:
+            raise AssertionError(f"{running} never started")
+        await handle.cancel()
+        try:
+            await handle.result()
+        except WorkflowFailureError as exc:
+            assert isinstance(exc.cause, CancelledError), exc.cause
+        else:
+            raise AssertionError("workflow completed instead of being cancelled")
+        finally:
+            rec.hold[running].set()
+        history = await handle.fetch_history()
+    return history
 
 
 class DynamicWorkflowTemporalTest(unittest.IsolatedAsyncioTestCase):
@@ -249,6 +290,28 @@ class DynamicWorkflowTemporalTest(unittest.IsolatedAsyncioTestCase):
         result, _ = await run_workflow(self.env, rec, {})
         self.assertTrue(result["done"])
         self.assertEqual(rec.started(), ["b"])
+
+    async def test_cancel_while_a_node_is_executing(self):
+        graph = [
+            node("start", type_="trigger.manual"),
+            node("slow", ["start"]), node("after", ["slow"]),
+        ]
+        rec = Recorder(graph, hold={"slow"})
+        history = await cancel_while(self.env, rec, {}, "slow")
+        self.assertEqual(rec.cleaned, ["run_test"])   # leftover nodes are stopped
+        self.assertEqual(rec.finished, [])            # the run keeps its canceled status
+        self.assertNotIn("after", rec.started())
+        await self.assertReplays(history)
+
+    async def test_cancel_stops_queued_nodes_from_starting(self):
+        # One slot: the other sources are ready but waiting for it when the cancel lands.
+        fans = [node(f"src{i}", ["start"]) for i in range(4)]
+        graph = [node("start", type_="trigger.manual"), *fans, node("join", [f["key"] for f in fans])]
+        rec = Recorder(graph, hold={"src0"})
+        await cancel_while(self.env, rec, {"max_parallel": 1}, "src0")
+        self.assertEqual(rec.started(), ["start", "src0"])
+        self.assertEqual(rec.cleaned, ["run_test"])
+        self.assertEqual(rec.finished, [])
 
     async def test_history_from_the_sequential_loop_still_replays(self):
         # Recorded from the one-node-at-a-time workflow before parallel-nodes-v1;
