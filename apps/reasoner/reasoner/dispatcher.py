@@ -29,6 +29,10 @@ async def run_dispatcher(client: Client, stop: asyncio.Event) -> None:
         except Exception:  # noqa: BLE001 — keep the loop alive across transient errors
             log.exception("dispatch poll failed")
         try:
+            await relay_cancellations(client)
+        except Exception:  # noqa: BLE001 — same: retried on the next tick
+            log.exception("cancel relay failed")
+        try:
             await asyncio.wait_for(stop.wait(), timeout=CONFIG.dispatch_interval_s)
         except asyncio.TimeoutError:
             pass
@@ -72,3 +76,32 @@ async def _dispatch_once(client: Client) -> None:
             if "ALREADY_EXISTS" in str(exc) or "already started" in str(exc).lower():
                 continue
             raise
+
+
+async def relay_cancellations(client: Client) -> int:
+    """Stop the workflows of runs a person canceled.
+
+    The Go API only marks the run canceled (no Temporal client in the control
+    plane, as with dispatch). This sends Temporal's cancel request to
+    `agently-run-<run id>` — the workflow stops at its next step, cleans up
+    (DynamicWorkflow.run) and ends as Cancelled — and stamps
+    cancel_signaled_at. A run canceled while still queued has no workflow yet
+    and is never dispatched (only queued runs are), so "not found" is stamped
+    too, as is a workflow that already finished. Any other error leaves the row
+    for the next tick. Returns how many cancellations were handled.
+    """
+    handled = 0
+    for run_id in await db.undelivered_cancellations():
+        handle = client.get_workflow_handle(f"agently-run-{run_id}")
+        try:
+            await handle.cancel()
+        except RPCError as exc:
+            text = str(exc).lower()
+            if "not found" not in text and "already completed" not in text:
+                raise
+            log.info("run %s canceled; no running workflow to stop (%s)", run_id, exc)
+        else:
+            log.info("cancel delivered to run %s", run_id)
+        await db.mark_cancel_signaled(run_id)
+        handled += 1
+    return handled

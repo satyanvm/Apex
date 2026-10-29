@@ -223,6 +223,7 @@ async def append_log(
 
 
 async def set_run_running(run_id: str, current_step: str) -> None:
+    # A run canceled between dispatch and its first activity stays canceled.
     async with _conn() as conn:
         await conn.execute(
             """
@@ -230,7 +231,7 @@ async def set_run_running(run_id: str, current_step: str) -> None:
                set status = 'running',
                    started_at = coalesce(started_at, now()),
                    current_step = %s
-             where id = %s
+             where id = %s and status in ('queued', 'running', 'paused')
             """,
             (current_step, run_id),
         )
@@ -238,24 +239,27 @@ async def set_run_running(run_id: str, current_step: str) -> None:
 
 async def set_run_progress(run_id: str, steps_done: int, steps_total: int, current_step: str) -> None:
     # Nodes finish concurrently, so progress writes can land out of order; never
-    # let a late, smaller count overwrite a newer one.
+    # let a late, smaller count overwrite a newer one. A canceled run keeps its
+    # "Canceled" step.
     async with _conn() as conn:
         await conn.execute(
             """
             update runs set steps_done = %s, steps_total = %s, current_step = %s
-             where id = %s and coalesce(steps_done, 0) <= %s
+             where id = %s and coalesce(steps_done, 0) <= %s and status <> 'canceled'
             """,
             (steps_done, steps_total, current_step, run_id, steps_done),
         )
 
 
 async def finish_run(run_id: str, status: str, current_step: str, error: str | None = None) -> None:
+    # Never overwrite a cancellation: the person who canceled the run decided
+    # its outcome, even if a node was still finishing when the cancel landed.
     async with _conn() as conn:
         await conn.execute(
             """
             update runs
                set status = %s, finished_at = now(), current_step = %s, error = %s
-             where id = %s
+             where id = %s and status <> 'canceled'
             """,
             (status, current_step, error, run_id),
         )
@@ -455,3 +459,34 @@ async def finish_browser_session(session_id: str, status: str) -> None:
             "update browser_sessions set status = %s, finished_at = now() where id = %s",
             (status, session_id),
         )
+
+
+async def undelivered_cancellations(limit: int = 50) -> list[str]:
+    """Runs a person canceled whose Temporal workflow hasn't been told yet."""
+    async with _conn() as conn:
+        cur = await conn.execute(
+            """select id from runs
+                where status = 'canceled' and cancel_signaled_at is null
+                order by finished_at limit %s""",
+            (limit,),
+        )
+        return [row[0] for row in await cur.fetchall()]
+
+
+async def mark_cancel_signaled(run_id: str) -> None:
+    async with _conn() as conn:
+        await conn.execute("update runs set cancel_signaled_at = now() where id = %s", (run_id,))
+
+
+async def stop_canceled_run(run_id: str) -> int:
+    """What a cancel leaves behind once the workflow has stopped: nodes that
+    never finished are marked stopped. Returns how many."""
+    async with _conn() as conn:
+        # 'blocked' is the skipped status (plan._SKIPPED_STATUS).
+        cur = await conn.execute(
+            """update run_agents
+                  set status = 'blocked', summary = 'Canceled', finished_at = coalesce(finished_at, now())
+                where run_id = %s and status in ('idle', 'running', 'waiting')""",
+            (run_id,),
+        )
+        return cur.rowcount
