@@ -160,13 +160,10 @@ func basePlan(prompt, email string) Plan {
 // PLANNER_MAX_CLUSTERS overrides it; raise it for requests spanning many apps.
 func maxClusterCalls() int { return envInt("PLANNER_MAX_CLUSTERS", 16) }
 
-// totalCap bounds how many selected node schemas reach the reduce prompt
-// (PLANNER_MAX_NODE_TYPES). A graph may use each type many times.
-func totalCap() int { return envInt("PLANNER_MAX_NODE_TYPES", 48) }
-
-// perClusterCap bounds how many node ids one cluster's map call may select
-// (PLANNER_MAX_NODES_PER_CLUSTER).
-func perClusterCap() int { return envInt("PLANNER_MAX_NODES_PER_CLUSTER", 12) }
+// mapMaxTokens is the answer budget for one map call. With no per-cluster cap a
+// call may return every id in its cluster; the largest (ampeco, 378 nodes) is
+// ~5k tokens of ids, so this leaves headroom rather than truncating the JSON.
+const mapMaxTokens = 8192
 
 // mapConcurrency bounds parallel map-phase LLM calls (rate-limit hygiene).
 const mapConcurrency = 8
@@ -174,9 +171,8 @@ const mapConcurrency = 8
 // mapPhase selects candidate node ids for the reduce prompt (builtin is always
 // in the reduce context and never routed). The router picks the relevant
 // clusters — hand-written and pieces alike, most relevant first — and each
-// routed cluster then gets one small-model call over its compact index. The
-// union is capped fairly across clusters in the router's relevance order, then
-// stable-sorted so the reduce prompt is reproducible.
+// routed cluster then gets one small-model call over its compact index. Every
+// selected id reaches the reduce prompt, sorted so the prompt is reproducible.
 //
 // A cluster whose map call fails used to be dropped silently on the theory that
 // "a missed cluster costs recall, never correctness." That is only true if you
@@ -184,11 +180,10 @@ const mapConcurrency = 8
 // asked for, and its absence shows up as a graph that quietly routes around it.
 // Any failure now fails the compile.
 func mapPhase(ctx context.Context, cat *Catalog, prompt string) ([]string, error) {
-	perCluster := perClusterCap()
-	system := fmt.Sprintf(`You route a user's automation request to integration nodes.
+	system := `You route a user's automation request to integration nodes.
 Given the request and a catalog cluster index (one node per line: "id — label — description"),
 return JSON: {"nodes": ["id", ...]} listing ONLY ids from this index that could plausibly be
-used to fulfill the request. Be selective — at most %d. Return {"nodes": []} if none apply.`, perCluster)
+used to fulfill the request. Be selective. Return {"nodes": []} if none apply.`
 
 	var (
 		mu        sync.Mutex
@@ -210,7 +205,7 @@ used to fulfill the request. Be selective — at most %d. Return {"nodes": []} i
 		defer func() { <-sem }()
 
 		user := "Request: " + prompt + "\n\nCluster \"" + f.Label + "\":\n" + clusterIndex(f)
-		raw, err := planLLMWith(ctx, mapModel(), 512, 75*time.Second, system, []llmMsg{{Role: "user", Content: user}})
+		raw, err := planLLMWith(ctx, mapModel(), mapMaxTokens, 75*time.Second, system, []llmMsg{{Role: "user", Content: user}})
 		if err != nil {
 			fail(f, err)
 			return
@@ -226,9 +221,6 @@ used to fulfill the request. Be selective — at most %d. Return {"nodes": []} i
 		for _, id := range out.Nodes {
 			if n, ok := cat.ByID[id]; ok && n.Cluster == f.Cluster {
 				valid = append(valid, id)
-			}
-			if len(valid) == perCluster {
-				break
 			}
 		}
 		// An empty selection is a legitimate answer — the router casts wide on
@@ -270,58 +262,14 @@ used to fulfill the request. Be selective — at most %d. Return {"nodes": []} i
 			len(failures), len(routed), strings.Join(msgs, "; "))
 	}
 
-	// routed doubles as the relevance order for the cap: most relevant cluster first.
-	return capFairly(byCluster, routed, totalCap()), nil
-}
-
-// capFairly trims the union of per-cluster selections to max. Its predecessor
-// sorted ALL ids alphabetically and truncated — silently dropping every node
-// late in the alphabet regardless of what the map models judged. Instead,
-// clusters take turns contributing their next-best id (each map call's output
-// order is its ranking) until the cap. Turn order is the given relevance
-// order (the router's ranking), so when the cap lands mid-round the extra
-// node goes to the MOST RELEVANT cluster — never to whoever sorts first
-// alphabetically. The final sort is cosmetic: it fixes the reduce-prompt
-// ordering for reproducibility and costs nanoseconds; it never changes WHICH
-// ids survive.
-func capFairly(byCluster map[string][]string, order []string, max int) []string {
-	clusters := make([]string, 0, len(byCluster))
-	seen := make(map[string]bool, len(byCluster))
-	total := 0
-	for _, k := range order {
-		if ids, ok := byCluster[k]; ok && !seen[k] {
-			seen[k] = true
-			clusters = append(clusters, k)
-			total += len(ids)
-		}
-	}
-	// Defensive: clusters that produced ids but are missing from order still
-	// contribute, after the ranked ones.
-	var rest []string
-	for k, ids := range byCluster {
-		if !seen[k] {
-			rest = append(rest, k)
-			total += len(ids)
-		}
-	}
-	sort.Strings(rest)
-	clusters = append(clusters, rest...)
-	if total > max {
-		total = max
-	}
-	selected := make([]string, 0, total)
-	for round := 0; len(selected) < total; round++ {
-		for _, k := range clusters {
-			if ids := byCluster[k]; round < len(ids) {
-				selected = append(selected, ids[round])
-				if len(selected) == total {
-					break
-				}
-			}
-		}
+	// No total cap: a cap had to drop ids the map models judged relevant, and
+	// rankings from separate map calls are not comparable enough to pick which.
+	var selected []string
+	for _, ids := range byCluster {
+		selected = append(selected, ids...)
 	}
 	sort.Strings(selected)
-	return selected
+	return selected, nil
 }
 
 /* -------------------------------- reduce phase -------------------------------- */
