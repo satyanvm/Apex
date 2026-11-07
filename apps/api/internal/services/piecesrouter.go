@@ -86,10 +86,9 @@ func clusterDirectory(cat *Catalog, keys []string) string {
 
 // routeClusters picks up to max cluster keys (piece AND hand-written) for the
 // map phase with one small-model call over the cluster directory. The returned
-// order is the model's own ranking — downstream (capFairly) uses it to decide
-// which cluster contributes the marginal node, so it is deliberately NOT
-// re-sorted. Any failure (no key, timeout, junk output, nothing valid) is
-// returned as an error and fails the compile.
+// order is the model's own ranking, most relevant first. Any failure (no key,
+// timeout, junk output, nothing valid) is returned as an error and fails the
+// compile.
 func routeClusters(ctx context.Context, cat *Catalog, prompt string, clusterKeys []string, max int) ([]string, error) {
 	if len(clusterKeys) == 0 {
 		return nil, nil // nothing to route is a valid answer, not a failure
