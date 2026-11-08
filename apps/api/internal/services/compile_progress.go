@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -114,7 +115,13 @@ func CatalogInfo(nodeType string) (label, cluster, kind string) {
 	if !ok {
 		return "", "", ""
 	}
-	return n.Label, cat.Clusters[n.Cluster].Label, n.Kind
+	return n.Label, displayCluster(cat.Clusters[n.Cluster].Label), n.Kind
+}
+
+// displayCluster drops the source suffix from an imported integration's name.
+// Attribution lives in the site footer and NOTICE.md.
+func displayCluster(label string) string {
+	return strings.TrimSuffix(label, " (Activepieces)")
 }
 
 // CompileEventForTest lets handler tests drive the progress callback.

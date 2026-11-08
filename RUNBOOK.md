@@ -92,6 +92,9 @@ cd apps/web && pnpm build
 
 ## Deploying
 
+For a public launch with HTTPS, follow [DEPLOY.md](DEPLOY.md). The notes below
+cover running the services as containers without the Caddy front end.
+
 Each service has a Dockerfile (build context: repo root). The full stack runs
 with Compose on one host:
 

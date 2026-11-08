@@ -164,7 +164,7 @@ Return {"clusters": []} if none apply.`
 	}
 	labels := make([]string, 0, len(selected))
 	for _, key := range selected {
-		labels = append(labels, cat.Clusters[key].Label)
+		labels = append(labels, displayCluster(cat.Clusters[key].Label))
 	}
 	stage.done(CompileEvent{
 		Detail: fmt.Sprintf("Embeddings kept %d of %d integrations; the router picked %d", len(keys), len(clusterKeys), len(selected)),

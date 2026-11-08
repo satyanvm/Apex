@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 
 const FUNNEL = [
   { n: "6,758", label: "actions and triggers", note: "from 707 integrations" },
-  { n: "100", label: "integrations", note: "kept by embedding search" },
-  { n: "16", label: "integrations", note: "picked by the router" },
-  { n: "48", label: "action schemas", note: "at most, given to the author" },
+  { n: "100+", label: "integrations", note: "kept by embedding search" },
+  { n: "≤ 16", label: "integrations", note: "picked by the router" },
+  { n: "≤ 48", label: "action schemas", note: "given to the graph author" },
   { n: "1", label: "validated graph", note: "or a clear failure" },
 ];
 
