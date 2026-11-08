@@ -50,9 +50,11 @@ async def main() -> None:
         plugins=[plugin],
     )
 
-    # No feature flags to report: config.py refuses to load without Gemini,
-    # Langfuse, Browserbase and SMTP, so reaching this line means all are present.
-    log.info("reasoner up: model=%s synthesis=%s", CONFIG.model, CONFIG.synthesis_model)
+    log.info(
+        "reasoner up: model=%s synthesis=%s tracing=%s browser=%s email=%s",
+        CONFIG.model, CONFIG.synthesis_model,
+        CONFIG.langfuse_enabled, CONFIG.browserbase_enabled, CONFIG.smtp_enabled,
+    )
 
     async with worker:
         dispatcher = asyncio.create_task(run_dispatcher(client, stop))

@@ -20,6 +20,10 @@ func NewRouter(p *services.Platform) chi.Router {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", health(p))
+
+		// Anonymous playground: streams a compile, never saves or runs anything.
+		r.Post("/public/compile", newPublicCompiler().handler())
+
 		r.Get("/dashboard", dashboard(p))
 
 		r.Get("/workflows", listWorkflows(p))

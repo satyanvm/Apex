@@ -151,6 +151,8 @@ func authorGraphSections(ctx context.Context, cat *Catalog, system, prompt strin
 
 	var graph []domain.GraphNode
 	for i := range outline.Sections {
+		emitCompile(ctx, CompileEvent{Stage: "reduce", Status: "start",
+			Detail: fmt.Sprintf("Writing section %d of %d: %s", i+1, len(outline.Sections), outline.Sections[i].Key)})
 		nodes, err := authorSection(ctx, cat, system, prompt, outline, i, graph, inputKeys)
 		if err != nil {
 			return nil, err
@@ -168,7 +170,14 @@ func authorSection(ctx context.Context, cat *Catalog, system, prompt string, out
 	var lastComplaint string
 	timeouts := 0
 	for i := 0; i < attempts; i++ {
+		var stage *compileStage
+		if i > 0 {
+			stage = startCompileStage(ctx, "repair", i, authorDetail(i, ""))
+		}
 		raw, err := reduceLLM(ctx, reduceModel(), reduceMaxTokens(), reduceTimeout(), system+sectionInstructions, msgs)
+		if stage != nil {
+			stage.done(CompileEvent{})
+		}
 		if errors.Is(err, errTimedOut) && timeouts < 1 && ctx.Err() == nil {
 			// One slow response is not a verdict on the section: ask again
 			// without spending a repair attempt.
@@ -182,6 +191,7 @@ func authorSection(ctx context.Context, cat *Catalog, system, prompt string, out
 		var spec reduceGraphSpec
 		if err := json.Unmarshal([]byte(extractJSON(raw)), &spec); err != nil {
 			lastComplaint = "not a single valid JSON object: " + err.Error()
+			reportValidation(ctx, i, []string{"The response was not a single valid JSON object"}, 0)
 			msgs = append(msgs,
 				llmMsg{Role: "assistant", Content: raw},
 				llmMsg{Role: "user", Content: "That was not a single valid JSON object (" + err.Error() + "). Return the corrected {\"nodes\": [...]} object and nothing else."},
@@ -193,6 +203,7 @@ func authorSection(ctx context.Context, cat *Catalog, system, prompt string, out
 		if len(problems) == 0 {
 			problems = graphProblems(append(append([]domain.GraphNode{}, prior...), nodes...), cat, inputKeys)
 		}
+		reportValidation(ctx, i, problems, len(prior)+len(nodes))
 		if len(problems) > 0 {
 			lastComplaint = strings.Join(problems, "; ")
 			msgs = append(msgs,

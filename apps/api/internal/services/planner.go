@@ -253,6 +253,11 @@ used to fulfill the request. Be selective — at most %d. Return {"nodes": []} i
 	if err != nil {
 		return nil, err
 	}
+	considered := 0
+	for _, key := range routed {
+		considered += len(cat.Clusters[key].Nodes)
+	}
+	stage := startCompileStage(ctx, "map", 0, fmt.Sprintf("Reading %d actions across %d integrations", considered, len(routed)))
 	for _, key := range routed {
 		wg.Add(1)
 		go runCluster(cat.Clusters[key])
@@ -266,12 +271,18 @@ used to fulfill the request. Be selective — at most %d. Return {"nodes": []} i
 			msgs[i] = e.Error()
 		}
 		sort.Strings(msgs)
+		stage.failed(CompileEvent{})
 		return nil, fmt.Errorf("map phase failed for %d of %d cluster(s): %s",
 			len(failures), len(routed), strings.Join(msgs, "; "))
 	}
 
 	// routed doubles as the relevance order for the cap: most relevant cluster first.
-	return capFairly(byCluster, routed, totalCap()), nil
+	selected := capFairly(byCluster, routed, totalCap())
+	stage.done(CompileEvent{
+		Detail: fmt.Sprintf("Kept %d of %d candidate actions for the graph author", len(selected), considered),
+		Items:  selected, Count: len(selected), Total: considered,
+	})
+	return selected, nil
 }
 
 // capFairly trims the union of per-cluster selections to max. Its predecessor
@@ -367,16 +378,26 @@ func authorGraph(ctx context.Context, cat *Catalog, system, prompt string, p *Pl
 	// decides; graphs over sectionThreshold are written section by section
 	// (planner_sections.go). A graph the outline misjudged as small, whose
 	// single call then overflows or times out, is re-planned in sections.
+	sizing := startCompileStage(ctx, "reduce", 0, "Sizing the graph")
 	outline, err := outlineGraph(ctx, system, prompt, false)
 	if err != nil {
+		sizing.failed(CompileEvent{})
 		return nil, err
 	}
+	if err := checkCompileNodeLimit(ctx, outline.EstimatedNodes); err != nil {
+		sizing.failed(CompileEvent{Detail: err.Error()})
+		return nil, err
+	}
+	sizing.done(CompileEvent{Detail: fmt.Sprintf("Planned about %d nodes", outline.EstimatedNodes), Count: outline.EstimatedNodes})
 	if !outline.sectioned() {
 		nodes, err := authorGraphSingle(ctx, cat, system, prompt, p)
 		if !errors.Is(err, errOutputCapped) && !errors.Is(err, errTimedOut) {
 			return nodes, err
 		}
 		if outline, err = outlineGraph(ctx, system, prompt, true); err != nil {
+			return nil, err
+		}
+		if err := checkCompileNodeLimit(ctx, outline.EstimatedNodes); err != nil {
 			return nil, err
 		}
 	}
@@ -390,14 +411,18 @@ func authorGraphSingle(ctx context.Context, cat *Catalog, system, prompt string,
 	const attempts = 3 // 1 author + 2 repairs
 	var lastComplaint string
 	for i := 0; i < attempts; i++ {
+		stage := startCompileStage(ctx, authorStage(i), i, authorDetail(i, "Writing the graph"))
 		raw, err := reduceLLM(ctx, reduceModel(), reduceMaxTokens(), reduceTimeout(), system, msgs)
 		if err != nil {
+			stage.failed(CompileEvent{})
 			// Provider-level failure: retrying won't change it.
 			return nil, fmt.Errorf("reduce phase: %w", err)
 		}
+		stage.done(CompileEvent{})
 		var spec reduceGraphSpec
 		if err := json.Unmarshal([]byte(extractJSON(raw)), &spec); err != nil {
 			lastComplaint = "not a single valid JSON object: " + err.Error()
+			reportValidation(ctx, i, []string{"The response was not a single valid JSON object"}, 0)
 			msgs = append(msgs,
 				llmMsg{Role: "assistant", Content: raw},
 				llmMsg{Role: "user", Content: "That was not a single valid JSON object (" + err.Error() + "). Return the full corrected JSON object and nothing else."},
@@ -412,7 +437,9 @@ func authorGraphSingle(ctx context.Context, cat *Catalog, system, prompt string,
 		for k := range spec.DefaultInput {
 			inputKeys[k] = true
 		}
-		if errs := graphProblems(nodes, cat, inputKeys); len(errs) > 0 {
+		errs := graphProblems(nodes, cat, inputKeys)
+		reportValidation(ctx, i, errs, len(nodes))
+		if len(errs) > 0 {
 			lastComplaint = strings.Join(errs, "; ")
 			msgs = append(msgs,
 				llmMsg{Role: "assistant", Content: raw},
@@ -425,6 +452,33 @@ func authorGraphSingle(ctx context.Context, cat *Catalog, system, prompt string,
 	}
 	return nil, fmt.Errorf("reduce phase: %s could not author a valid graph in %d attempts; last problem: %s",
 		reduceModel(), attempts, lastComplaint)
+}
+
+// authorStage names attempt i of writing a graph: the first is the reduce stage,
+// later ones are repairs driven by the validator's complaints.
+func authorStage(i int) string {
+	if i == 0 {
+		return "reduce"
+	}
+	return "repair"
+}
+
+func authorDetail(i int, first string) string {
+	if i == 0 {
+		return first
+	}
+	return fmt.Sprintf("Validator errors sent back to the model, round %d", i)
+}
+
+// reportValidation emits the validate stage for one authored graph.
+func reportValidation(ctx context.Context, attempt int, problems []string, nodes int) {
+	if len(problems) == 0 {
+		emitCompile(ctx, CompileEvent{Stage: "validate", Status: "done", Attempt: attempt, Count: nodes,
+			Detail: fmt.Sprintf("%d nodes passed the structure and reference checks", nodes)})
+		return
+	}
+	emitCompile(ctx, CompileEvent{Stage: "validate", Status: "failed", Attempt: attempt, Items: problems, Count: len(problems),
+		Detail: fmt.Sprintf("%d problem(s) found", len(problems))})
 }
 
 // graphProblems runs the structural checks, then — only once the structure

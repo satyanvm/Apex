@@ -43,6 +43,8 @@ def _langfuse():
 
 def langchain_config(run_id: str, node: str, *, model: str | None = None) -> dict[str, Any]:
     """Build a LangChain `config` dict that routes a node's LLM call into Langfuse."""
+    if not CONFIG.langfuse_enabled:
+        return {"run_name": node, "metadata": {"run_id": run_id}}
     _langfuse()  # constructed for its side effect: the handler reads the global client
     try:
         from langfuse.langchain import CallbackHandler  # type: ignore
@@ -64,9 +66,10 @@ def langchain_config(run_id: str, node: str, *, model: str | None = None) -> dic
 
 def session_handle(run_id: str) -> str:
     """The value stored in runs.langfuse_trace_id — the Langfuse session id."""
-    return run_id
+    return run_id if CONFIG.langfuse_enabled else ""
 
 
 def flush() -> None:
     """Flush buffered spans. A failure here loses the trace, so it is not swallowed."""
-    _langfuse().flush()
+    if CONFIG.langfuse_enabled:
+        _langfuse().flush()
