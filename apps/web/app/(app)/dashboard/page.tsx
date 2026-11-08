@@ -61,7 +61,7 @@ export default function DashboardPage() {
       <PageContainer>
         <PageTitle
           title="Dashboard"
-          subtitle="Live workflow activity from the Agently control plane."
+          subtitle="Live workflow activity from the Apex control plane."
           actions={<LivePill />}
         />
 

@@ -4,31 +4,40 @@ import { NextResponse, type NextRequest } from "next/server";
  * Access control for a hosted deployment.
  *
  * - AGENTLY_WEB_PASSWORD: when set, every page and /api call needs HTTP Basic
- *   auth with that password (any username). Basic auth rides along on
- *   EventSource streams and artifact downloads, which a header-based scheme
- *   would not.
+ *   auth with that password (any username), except the public site listed in
+ *   isPublic. Basic auth rides along on EventSource streams and artifact
+ *   downloads, which a header-based scheme would not.
  * - AGENTLY_API_TOKEN: attached server-side to every proxied /api request so
  *   the Go API accepts it. The browser never sees the token.
  *
  * Webhook ingress (/api/hooks/*) is exempt: third-party providers call it.
  */
+const PUBLIC_PAGES = new Set(["/", "/playground", "/icon.svg"]);
+
+function isPublic(pathname: string): boolean {
+  return PUBLIC_PAGES.has(pathname) || pathname === "/api/health" || pathname.startsWith("/api/public/");
+}
+
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const password = process.env.AGENTLY_WEB_PASSWORD;
   const isHook = pathname.startsWith("/api/hooks/");
+  const open = isPublic(pathname);
 
-  if (password && !isHook && !basicAuthOk(req.headers.get("authorization"), password)) {
+  if (password && !isHook && !open && !basicAuthOk(req.headers.get("authorization"), password)) {
     return new NextResponse("Authentication required", {
       status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Agently", charset="UTF-8"' },
+      headers: { "WWW-Authenticate": 'Basic realm="Apex", charset="UTF-8"' },
     });
   }
 
   if (!pathname.startsWith("/api/")) return NextResponse.next();
 
+  // Public routes get no API token, so a path that slips past isPublic still
+  // meets the API's own auth check.
   const headers = new Headers(req.headers);
   const token = process.env.AGENTLY_API_TOKEN;
-  if (token) headers.set("authorization", `Bearer ${token}`);
+  if (token && !open) headers.set("authorization", `Bearer ${token}`);
   else headers.delete("authorization");
   return NextResponse.next({ request: { headers } });
 }

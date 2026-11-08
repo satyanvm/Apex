@@ -399,3 +399,17 @@
   background: var(--color-surface-3);
   color: var(--color-fg);
 }
+
+/* ------------------------------------------------------------------ *
+   Playground
+ * ------------------------------------------------------------------ */
+@keyframes node-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.playground-node {
+  animation: node-in 320ms var(--ease-out-soft) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .playground-node { animation: none; }
+}

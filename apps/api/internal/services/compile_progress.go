@@ -107,14 +107,14 @@ func CatalogOutputs(nodeType string) []string {
 	return nil
 }
 
-// CatalogLabel returns the display label and integration name of a node type.
-func CatalogLabel(nodeType string) (label, cluster string) {
+// CatalogInfo returns the display label, integration name and kind of a node type.
+func CatalogInfo(nodeType string) (label, cluster, kind string) {
 	cat := LoadCatalog()
 	n, ok := cat.ByID[nodeType]
 	if !ok {
-		return "", ""
+		return "", "", ""
 	}
-	return n.Label, cat.Clusters[n.Cluster].Label
+	return n.Label, cat.Clusters[n.Cluster].Label, n.Kind
 }
 
 // CompileEventForTest lets handler tests drive the progress callback.

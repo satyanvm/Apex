@@ -84,7 +84,7 @@ async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
     // says nothing about that, so name the likely cause.
     if (e instanceof TypeError) {
       throw new Error(
-        "Couldn't reach the Agently server — it may be down or restarting. " +
+        "Couldn't reach the Apex server — it may be down or restarting. " +
           "Check `pnpm agently:status` and try again.",
       );
     }

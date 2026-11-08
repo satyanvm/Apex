@@ -35,6 +35,7 @@ type publicNode struct {
 	Type      string         `json:"type"`
 	Label     string         `json:"label,omitempty"`
 	Service   string         `json:"service,omitempty"`
+	Kind      string         `json:"kind,omitempty"`
 	DependsOn []string       `json:"dependsOn"`
 	Config    map[string]any `json:"config"`
 	Outputs   []string       `json:"outputs,omitempty"`
@@ -62,7 +63,7 @@ type publicCompiled struct {
 type publicCompiler struct {
 	limits    *publicLimits
 	compile   func(context.Context, string) (services.Plan, error)
-	describe  func(string) (label, service string, outputs []string)
+	describe  func(string) nodeInfo
 	maxPrompt int
 	maxNodes  int
 	timeout   time.Duration
@@ -83,9 +84,15 @@ func newPublicCompiler() *publicCompiler {
 	}
 }
 
-func describeNodeType(nodeType string) (string, string, []string) {
-	label, service := services.CatalogLabel(nodeType)
-	return label, service, services.CatalogOutputs(nodeType)
+// nodeInfo is what the catalog says about a node type.
+type nodeInfo struct {
+	label, service, kind string
+	outputs              []string
+}
+
+func describeNodeType(nodeType string) nodeInfo {
+	label, service, kind := services.CatalogInfo(nodeType)
+	return nodeInfo{label: label, service: service, kind: kind, outputs: services.CatalogOutputs(nodeType)}
 }
 
 func normalizePrompt(prompt string) string {
@@ -240,10 +247,10 @@ func (c *publicCompiler) stream(w http.ResponseWriter, r *http.Request, flusher 
 func (c *publicCompiler) toResult(plan services.Plan, events []services.CompileEvent, elapsed time.Duration) publicResult {
 	nodes := make([]publicNode, 0, len(plan.Nodes))
 	for _, n := range plan.Nodes {
-		label, service, outputs := c.describe(n.Type)
+		info := c.describe(n.Type)
 		nodes = append(nodes, publicNode{
-			Key: n.Key, Name: n.Name, Type: n.Type, Label: label, Service: service,
-			DependsOn: n.DependsOn, Config: n.Config, Outputs: outputs, Col: n.Col, Row: n.Row,
+			Key: n.Key, Name: n.Name, Type: n.Type, Label: info.label, Service: info.service, Kind: info.kind,
+			DependsOn: n.DependsOn, Config: n.Config, Outputs: info.outputs, Col: n.Col, Row: n.Row,
 		})
 	}
 	repairs := 0

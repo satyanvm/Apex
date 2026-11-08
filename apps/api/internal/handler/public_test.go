@@ -18,7 +18,7 @@ import (
 func testCompiler(compile func(context.Context, string) (services.Plan, error)) *publicCompiler {
 	c := newPublicCompiler()
 	c.compile = compile
-	c.describe = func(string) (string, string, []string) { return "", "", nil }
+	c.describe = func(string) nodeInfo { return nodeInfo{} }
 	return c
 }
 
