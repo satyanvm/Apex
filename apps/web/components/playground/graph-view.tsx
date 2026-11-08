@@ -20,8 +20,13 @@ import { Bot, GitBranch, Plug, Send, Wrench, Zap, type LucideIcon } from "lucide
 import { cn } from "@/lib/utils";
 import { kindOf, type PublicNode } from "@/lib/playground";
 
-const COL_W = 290;
-const ROW_H = 118;
+const NODE_W = 208;
+const NODE_H = 58;
+const COL_W = NODE_W + 44;
+const ROW_H = 92;
+const PAD = 28;
+/** Below this zoom node text is unreadable, so wide graphs pan instead of shrinking. */
+const MIN_FIT_ZOOM = 0.72;
 
 const KIND: Record<ReturnType<typeof kindOf>, { icon: LucideIcon; tint: string }> = {
   trigger: { icon: Zap, tint: "bg-warn-bg text-warn" },
@@ -41,7 +46,7 @@ function CompiledNode({ data }: NodeProps<GraphNode>) {
   return (
     <div
       className={cn(
-        "playground-node w-[232px] rounded-lg border bg-surface px-3 py-2.5 shadow-card transition-colors",
+        "playground-node w-[208px] rounded-lg border bg-surface px-3 py-2.5 shadow-card transition-colors",
         selected ? "border-accent ring-2 ring-accent/20" : "border-border-strong hover:border-accent-soft",
       )}
       style={{ animationDelay: `${Math.min(node.col, 12) * 70}ms` }}
@@ -75,6 +80,7 @@ function Canvas({
   onSelect: (key: string | null) => void;
 }) {
   const flow = useReactFlow();
+  const wrapper = React.useRef<HTMLDivElement>(null);
 
   const flowNodes = React.useMemo<GraphNode[]>(
     () =>
@@ -106,12 +112,25 @@ function Canvas({
     [nodes, selected],
   );
 
+  // Fit the graph when it's readable. When it's too wide, start at the trigger.
   React.useEffect(() => {
-    const t = setTimeout(() => flow.fitView({ padding: 0.14, duration: 300, maxZoom: 1 }), 40);
+    const el = wrapper.current;
+    if (!el || nodes.length === 0) return;
+    const place = () => {
+      const graphW = Math.max(...nodes.map((n) => n.col)) * COL_W + NODE_W;
+      const graphH = Math.max(...nodes.map((n) => n.row)) * ROW_H + NODE_H;
+      const { width, height } = el.getBoundingClientRect();
+      const fit = Math.min((width - PAD * 2) / graphW, (height - PAD * 2) / graphH, 1);
+      const zoom = Math.max(fit, MIN_FIT_ZOOM);
+      const center = (space: number, size: number) => Math.max(PAD, (space - size * zoom) / 2);
+      void flow.setViewport({ x: center(width, graphW), y: center(height, graphH), zoom });
+    };
+    const t = setTimeout(place, 40);
     return () => clearTimeout(t);
   }, [nodes, flow]);
 
   return (
+    <div ref={wrapper} className="absolute inset-0">
     <ReactFlow
       nodes={flowNodes}
       edges={edges}
@@ -120,14 +139,13 @@ function Canvas({
       onPaneClick={() => onSelect(null)}
       nodesConnectable={false}
       elementsSelectable={false}
-      fitView
-      fitViewOptions={{ padding: 0.14, maxZoom: 1 }}
       minZoom={0.2}
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="var(--color-border-strong)" />
       <Controls showInteractive={false} />
     </ReactFlow>
+    </div>
   );
 }
 

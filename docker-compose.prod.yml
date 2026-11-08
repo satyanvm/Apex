@@ -76,7 +76,10 @@ services:
     <<: *restart
     build: { context: ., dockerfile: apps/pieces-worker/Dockerfile }
     env_file: .env
-    environment: *service-env
+    environment:
+      <<: *service-env
+      # Loading all 707 integrations needs more than Node's default heap.
+      NODE_OPTIONS: --max-old-space-size=${PIECES_HEAP_MB:-4096}
     depends_on:
       migrate: { condition: service_completed_successfully }
       temporal: { condition: service_started }

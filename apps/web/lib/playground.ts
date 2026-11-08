@@ -67,6 +67,8 @@ export function applyEvent(stages: Stages, ev: CompileEvent): Stages {
   }
   if (ev.detail) next.detail = ev.detail;
   if (ev.items) next.items = ev.items;
+  // Once validation passes, the earlier round's problems no longer apply.
+  if (ev.stage === "validate" && ev.status === "done") next.items = undefined;
   return { ...stages, [ev.stage]: next };
 }
 

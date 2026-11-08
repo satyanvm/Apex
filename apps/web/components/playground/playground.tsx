@@ -32,8 +32,16 @@ export function Playground() {
   const [view, setView] = React.useState<"graph" | "json">("graph");
   const [elapsed, setElapsed] = React.useState(0);
   const abort = React.useRef<AbortController | null>(null);
+  const canvas = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => () => abort.current?.abort(), []);
+
+  // On a phone the graph sits below the timeline, out of sight when it lands.
+  React.useEffect(() => {
+    if (result && window.matchMedia("(max-width: 1023px)").matches) {
+      canvas.current?.scrollIntoView({ block: "start" });
+    }
+  }, [result]);
 
   React.useEffect(() => {
     if (phase !== "compiling") return;
@@ -188,7 +196,7 @@ export function Playground() {
         </div>
       </section>
 
-      <section className="relative flex min-h-[520px] flex-col bg-inset" aria-label="Compiled workflow">
+      <section ref={canvas} className="relative flex h-[75dvh] min-h-[520px] flex-col bg-inset lg:h-auto" aria-label="Compiled workflow">
         {result ? (
           <>
             <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border bg-bg px-5 py-3">
@@ -196,7 +204,7 @@ export function Playground() {
                 <h2 className="truncate text-[15px] font-semibold text-fg">{result.name}</h2>
                 <p className="mt-0.5 font-mono text-[11px] text-faint">
                   {result.nodes.length} nodes
-                  {result.sources?.length ? ` · ${result.sources.length} services` : ""}
+                  {result.sources?.length ? ` · ${result.sources.length} ${result.sources.length === 1 ? "service" : "services"}` : ""}
                   {` · ${result.repairs} ${result.repairs === 1 ? "repair" : "repairs"}`}
                   {result.schedule ? ` · ${result.schedule}` : ""}
                 </p>

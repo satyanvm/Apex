@@ -5,7 +5,8 @@ certificate by itself, and it is the only service reachable from the internet.
 
 ## What you need
 
-- A server with at least 2 vCPUs and 4 GB of RAM, running Ubuntu 24.04
+- A server with at least 4 vCPUs and 8 GB of RAM, running Ubuntu 24.04. The
+  integrations worker alone uses about 3 GB once all 707 packages are loaded.
 - A domain you can edit DNS for
 - A Gemini API key from https://aistudio.google.com/apikey
 
@@ -82,6 +83,7 @@ These limits are in `.env`. Restart the API after changing them with
 | `PUBLIC_COMPILE_MAX_CONCURRENT` | 3 | Compiles running at once |
 | `PUBLIC_COMPILE_MAX_PROMPT` | 1200 | Longest prompt, in characters |
 | `PUBLIC_COMPILE_MAX_NODES` | 40 | Largest graph the demo will write |
+| `PUBLIC_COMPILE_TIMEOUT_S` | 240 | Longest one compile may run |
 
 Repeated prompts are served from memory and cost nothing. Counters are held in
 memory, so restarting the API resets them.

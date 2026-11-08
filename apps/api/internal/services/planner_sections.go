@@ -151,12 +151,13 @@ func authorGraphSections(ctx context.Context, cat *Catalog, system, prompt strin
 
 	var graph []domain.GraphNode
 	for i := range outline.Sections {
-		emitCompile(ctx, CompileEvent{Stage: "reduce", Status: "start",
-			Detail: fmt.Sprintf("Writing section %d of %d: %s", i+1, len(outline.Sections), outline.Sections[i].Key)})
+		stage := startCompileStage(ctx, "reduce", 0, fmt.Sprintf("Writing section %d of %d: %s", i+1, len(outline.Sections), outline.Sections[i].Key))
 		nodes, err := authorSection(ctx, cat, system, prompt, outline, i, graph, inputKeys)
 		if err != nil {
+			stage.failed(CompileEvent{})
 			return nil, err
 		}
+		stage.done(CompileEvent{Detail: fmt.Sprintf("Wrote %d of %d sections", i+1, len(outline.Sections))})
 		graph = append(graph, nodes...)
 	}
 	overlayMeta(reduceGraphSpec{Name: outline.Name, Description: outline.Description, Schedule: outline.Schedule}, p)

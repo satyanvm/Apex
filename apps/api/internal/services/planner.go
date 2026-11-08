@@ -418,7 +418,7 @@ func authorGraphSingle(ctx context.Context, cat *Catalog, system, prompt string,
 			// Provider-level failure: retrying won't change it.
 			return nil, fmt.Errorf("reduce phase: %w", err)
 		}
-		stage.done(CompileEvent{})
+		stage.done(CompileEvent{Detail: authorDone(i)})
 		var spec reduceGraphSpec
 		if err := json.Unmarshal([]byte(extractJSON(raw)), &spec); err != nil {
 			lastComplaint = "not a single valid JSON object: " + err.Error()
@@ -468,6 +468,13 @@ func authorDetail(i int, first string) string {
 		return first
 	}
 	return fmt.Sprintf("Validator errors sent back to the model, round %d", i)
+}
+
+func authorDone(i int) string {
+	if i == 0 {
+		return "Wrote the graph from the selected schemas"
+	}
+	return fmt.Sprintf("Rewrote the graph after round %d of validator errors", i)
 }
 
 // reportValidation emits the validate stage for one authored graph.
