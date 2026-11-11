@@ -22,9 +22,6 @@ DOMAIN=$DOMAIN
 # Required: https://aistudio.google.com/apikey
 GEMINI_API_KEY=
 
-# Password for the private console (any username).
-AGENTLY_WEB_PASSWORD=$(openssl rand -hex 16)
-
 # Generated. Back up AGENTLY_CREDENTIALS_KEY: stored credentials can't be read without it.
 AGENTLY_API_TOKEN=$(secret)
 AGENTLY_CREDENTIALS_KEY=$(secret)
@@ -35,6 +32,10 @@ TEMPORAL_DB_PASSWORD=$(secret)
 PUBLIC_COMPILE_PER_HOUR=6
 PUBLIC_COMPILE_DAILY_BUDGET=200
 PUBLIC_COMPILE_MAX_CONCURRENT=3
+
+# Per signed-in account, per rolling 24 hours. 0 turns a limit off.
+RUN_LIMIT_PER_DAY=20
+COMPILE_LIMIT_PER_DAY=20
 
 # Optional. Without these, only the nodes that need them fail, with the reason.
 BROWSERBASE_API_KEY=

@@ -86,7 +86,8 @@ Next.js web -> Go API -> Postgres
 
 [DEPLOY.md](DEPLOY.md) takes a fresh server to HTTPS in seven steps. The public
 playground only compiles: it's rate limited per visitor and per day, never saves
-anything and never starts a run. Everything else sits behind a password.
+anything and never starts a run. Saving and running workflows needs a free
+account (email and password), with daily limits per account.
 
 ## Failure model
 
@@ -119,4 +120,4 @@ pnpm agently
 Open the web app at `http://localhost:3000` and Temporal UI at
 `http://localhost:8080`. See `RUNBOOK.md` for setup, migrations, service restart,
 and verification commands, and its "Deploying" section for running the stack in
-containers behind an access token and password.
+containers behind an access token and sign-in.

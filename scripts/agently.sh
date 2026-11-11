@@ -35,7 +35,6 @@ export PIECES_TASK_QUEUE="${PIECES_TASK_QUEUE:-agently-pieces}"
 # GEMINI_API_KEY, MOONSHOT_API_KEY, LANGFUSE_*, BROWSERBASE_* and SMTP_*.
 # Next.js only reads apps/web/.env, so the web's access settings come from here.
 export AGENTLY_API_TOKEN="${AGENTLY_API_TOKEN:-$(env_value AGENTLY_API_TOKEN)}"
-export AGENTLY_WEB_PASSWORD="${AGENTLY_WEB_PASSWORD:-$(env_value AGENTLY_WEB_PASSWORD)}"
 
 API_BIN=/tmp/agently-api
 RUNDIR="$ROOT/.agently"

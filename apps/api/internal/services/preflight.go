@@ -135,8 +135,43 @@ func credentialNeedFor(typ string) (nodeCredentialNeed, bool) {
 	return need, true
 }
 
-// checkNodeCredentials is the shared preflight over a graph.
-func checkNodeCredentials(repo platform.CredentialRepo, workspace domain.WorkspaceId, nodes []domain.GraphNode) RunPreflight {
+// runAs is whose credentials a run of wf may use: the account starting it, or
+// for schedules and webhooks the account that owns the workflow. nil means a
+// workflow no account owns, which may use only credentials no account owns.
+func runAs(repos *platform.Repositories, wf domain.Workflow, actor *domain.MemberId) *domain.MemberId {
+	if actor != nil {
+		return actor
+	}
+	if wf.OwnerID != nil && repos.Accounts.Exists(*wf.OwnerID) {
+		return wf.OwnerID
+	}
+	return nil
+}
+
+// NodeCredentialID is the credential a node has selected, or "".
+func NodeCredentialID(n domain.GraphNode) string {
+	id, _ := n.Config[credentialIDKey].(string)
+	return strings.TrimSpace(id)
+}
+
+// foreignCredential returns the first node whose selected credential the
+// runner may not use. Unlike the preflight it cannot be skipped.
+func foreignCredential(repo platform.CredentialRepo, nodes []domain.GraphNode, owner *domain.MemberId) (domain.GraphNode, bool) {
+	for _, n := range nodes {
+		id, _ := n.Config[credentialIDKey].(string)
+		if id = strings.TrimSpace(id); id == "" {
+			continue
+		}
+		if row, found := repo.GetByID(domain.CredentialId(id)); found && !sameOwner(row.OwnerID, owner) {
+			return n, true
+		}
+	}
+	return domain.GraphNode{}, false
+}
+
+// checkNodeCredentials is the shared preflight over a graph. A credential that
+// owner may not use counts as deleted.
+func checkNodeCredentials(repo platform.CredentialRepo, workspace domain.WorkspaceId, nodes []domain.GraphNode, owner *domain.MemberId) RunPreflight {
 	types, haveFields := credentialTypes()
 	byAccount := map[string]*PreflightAccount{}
 	var order []string
@@ -158,7 +193,7 @@ func checkNodeCredentials(repo platform.CredentialRepo, workspace domain.Workspa
 		problem := ""
 		if credID != "" {
 			row, found := repo.GetByID(domain.CredentialId(credID))
-			if !found || row.WorkspaceID != workspace {
+			if !found || row.WorkspaceID != workspace || !sameOwner(row.OwnerID, owner) {
 				problem = ProblemCredentialDeleted
 			} else {
 				data = row.Data
@@ -272,28 +307,30 @@ func problemText(a PreflightAccount, n PreflightNode) string {
 }
 
 // Preflight checks the workflow's current graph without launching anything.
-func (s *RunService) Preflight(slug string) (RunPreflight, error) {
+func (s *RunService) Preflight(slug string, actor *domain.MemberId) (RunPreflight, error) {
 	wf, ok := s.deps.Repos.Workflows.GetBySlug(slug)
 	if !ok {
 		return RunPreflight{}, domain.NotFound("workflow")
 	}
-	return checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, currentNodes(s.deps.Repos, wf)), nil
+	owner := runAs(s.deps.Repos, wf, actor)
+	return checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, currentNodes(s.deps.Repos, wf), owner), nil
 }
 
 // ApplyCredential selects credential id on every node of the workflow that
 // needs its type and cannot run as configured, saving the result as a new
 // graph version. Nodes that already resolve keep their own selection.
-func (s *WorkflowService) ApplyCredential(slug string, id domain.CredentialId) (RunPreflight, error) {
+func (s *WorkflowService) ApplyCredential(slug string, id domain.CredentialId, actor *domain.MemberId) (RunPreflight, error) {
 	wf, ok := s.deps.Repos.Workflows.GetBySlug(slug)
 	if !ok {
 		return RunPreflight{}, domain.NotFound("workflow")
 	}
+	owner := runAs(s.deps.Repos, wf, actor)
 	cred, found := s.deps.Repos.Credentials.GetByID(id)
-	if !found || cred.WorkspaceID != wf.WorkspaceID {
+	if !found || cred.WorkspaceID != wf.WorkspaceID || !sameOwner(cred.OwnerID, owner) {
 		return RunPreflight{}, domain.NotFound("Credential")
 	}
 	nodes := currentNodes(s.deps.Repos, wf)
-	before := checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, nodes)
+	before := checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, nodes, owner)
 	broken := map[string]bool{}
 	for _, a := range before.Accounts {
 		if a.CredentialType != cred.Type {
@@ -321,7 +358,7 @@ func (s *WorkflowService) ApplyCredential(slug string, id domain.CredentialId) (
 	if _, err := s.SaveGraph(slug, updated); err != nil {
 		return RunPreflight{}, err
 	}
-	return checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, updated), nil
+	return checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, updated, owner), nil
 }
 
 // currentNodes returns the graph of the workflow's current version (empty

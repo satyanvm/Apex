@@ -96,9 +96,24 @@ func (s *RunService) Launch(slug string, input validate.LaunchRunInput) (domain.
 	now := domain.Timestamp(s.deps.Clock.ISO())
 	runID := domain.NewRunId()
 
+	var actorID *domain.MemberId
 	triggeredBy := domain.Principal{Name: "Manual", Initials: "MA"}
-	if members := s.deps.Repos.Members.All(); len(members) > 0 {
+	if input.Actor != nil {
+		actorID = &input.Actor.ID
+		triggeredBy = domain.Principal{Name: input.Actor.Name, Initials: input.Actor.Initials}
+	} else if members := s.deps.Repos.Members.All(); len(members) > 0 {
 		triggeredBy = domain.Principal{Name: members[0].Name, Initials: members[0].Initials}
+	}
+	// Credentials are private to their account. This check runs even when the
+	// preflight is skipped: a graph can name any credential id.
+	owner := runAs(s.deps.Repos, wf, actorID)
+	nodes := currentNodes(s.deps.Repos, wf)
+	if n, foreign := foreignCredential(s.deps.Repos.Credentials, nodes, owner); foreign {
+		name := n.Name
+		if name == "" {
+			name = n.Key
+		}
+		return domain.RunDetail{}, domain.Forbidden(name + " uses an account that isn't yours. Connect your own account on that node, then run again.")
 	}
 	region := s.deps.Repos.Workspace.Get().DefaultRegion
 	if input.Region != nil {
@@ -113,7 +128,7 @@ func (s *RunService) Launch(slug string, input validate.LaunchRunInput) (domain.
 	// running until the first node without a token.
 	var preflight *RunPreflight
 	if credentialCheckEnabled() && !input.SkipCredentialCheck {
-		pf := checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, currentNodes(s.deps.Repos, wf))
+		pf := checkNodeCredentials(s.deps.Repos.Credentials, wf.WorkspaceID, nodes, owner)
 		if !pf.Ready {
 			if input.Trigger == domain.TriggerManual || input.Trigger == "" {
 				return domain.RunDetail{}, preflightError(pf)

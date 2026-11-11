@@ -65,11 +65,20 @@ visit can take a few seconds while Caddy gets the certificate.
 
 | Path | Access |
 |---|---|
-| `/`, `/playground`, `/api/public/*`, `/api/health` | Anyone |
+| `/`, `/playground`, `/signin`, `/signup`, `/api/public/*`, `/api/auth/*`, `/api/health` | Anyone |
 | `/api/hooks/*` | Anyone, because third-party webhooks call it |
-| Everything else, including the console at `/dashboard` | `AGENTLY_WEB_PASSWORD`, with any username |
+| Everything else, including the console at `/dashboard` | A signed-in account |
 
-The public playground only compiles. It never saves a workflow or starts a run.
+The public playground only compiles. It never saves a workflow or starts a run;
+its "Run this workflow" button sends visitors through sign-up first.
+
+Anyone can create an account with an email and password. Each account sees and
+uses only the credentials it saved, and can change and run only the workflows
+it created. Workflows and runs are listed for every account. Workflows created
+before accounts existed belong to no account: anyone signed in can run them
+with their own credentials, and nobody can edit them.
+
+There is no password reset or email verification yet.
 
 ## Controlling cost
 
@@ -84,6 +93,8 @@ These limits are in `.env`. Restart the API after changing them with
 | `PUBLIC_COMPILE_MAX_PROMPT` | 1200 | Longest prompt, in characters |
 | `PUBLIC_COMPILE_MAX_NODES` | 40 | Largest graph the demo will write |
 | `PUBLIC_COMPILE_TIMEOUT_S` | 240 | Longest one compile may run |
+| `RUN_LIMIT_PER_DAY` | 20 | Runs each account can start per rolling 24 hours (0 = no limit) |
+| `COMPILE_LIMIT_PER_DAY` | 20 | Compiles each account can do in the console per rolling 24 hours (0 = no limit) |
 
 Repeated prompts are served from memory and cost nothing. Counters are held in
 memory, so restarting the API resets them.

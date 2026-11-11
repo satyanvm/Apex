@@ -36,7 +36,8 @@ func authMiddleware(token string) func(http.Handler) http.Handler {
 }
 
 func authExempt(path string) bool {
-	return path == "/api/health" || strings.HasPrefix(path, "/api/hooks/") || strings.HasPrefix(path, "/api/public/")
+	return path == "/api/health" || strings.HasPrefix(path, "/api/hooks/") ||
+		strings.HasPrefix(path, "/api/public/") || strings.HasPrefix(path, "/api/auth/")
 }
 
 // corsOrigins reads CORS_ORIGINS (comma-separated); localhost when unset.

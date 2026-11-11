@@ -65,17 +65,46 @@ func NewCredentialService(deps Deps) *CredentialService {
 	return &CredentialService{deps: deps}
 }
 
-func (s *CredentialService) List() []CredentialSummary {
+// sameOwner reports whether a credential belongs to owner. Credentials are
+// private to the member who saved them; nil on both sides is the operator's
+// pre-accounts data, used by workflows that no account owns.
+func sameOwner(a, b *domain.MemberId) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// List returns owner's credentials.
+func (s *CredentialService) List(owner *domain.MemberId) []CredentialSummary {
 	ws := s.deps.Repos.Workspace.Get()
 	rows := s.deps.Repos.Credentials.ListByWorkspace(ws.ID)
 	out := make([]CredentialSummary, 0, len(rows))
 	for _, c := range rows {
-		out = append(out, summarize(c))
+		if sameOwner(c.OwnerID, owner) {
+			out = append(out, summarize(c))
+		}
 	}
 	return out
 }
 
-func (s *CredentialService) Create(name, typ string, values map[string]any) (CredentialSummary, error) {
+// owned returns credential id when owner may use it, NotFound otherwise, so
+// another account's credential ids reveal nothing.
+func (s *CredentialService) owned(id domain.CredentialId, owner *domain.MemberId) (domain.Credential, error) {
+	c, ok := s.deps.Repos.Credentials.GetByID(id)
+	if !ok || c.WorkspaceID != s.deps.Repos.Workspace.Get().ID || !sameOwner(c.OwnerID, owner) {
+		return domain.Credential{}, domain.NotFound("Credential")
+	}
+	return c, nil
+}
+
+// CheckOwned reports NotFound unless owner may use credential id.
+func (s *CredentialService) CheckOwned(id domain.CredentialId, owner *domain.MemberId) error {
+	_, err := s.owned(id, owner)
+	return err
+}
+
+func (s *CredentialService) Create(owner *domain.MemberId, name, typ string, values map[string]any) (CredentialSummary, error) {
 	if err := validateCredentialType(typ, values, true); err != nil {
 		return CredentialSummary{}, err
 	}
@@ -86,6 +115,7 @@ func (s *CredentialService) Create(name, typ string, values map[string]any) (Cre
 		Type:        typ,
 		Name:        name,
 		Data:        cleanValues(values),
+		OwnerID:     owner,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -94,10 +124,10 @@ func (s *CredentialService) Create(name, typ string, values map[string]any) (Cre
 
 // Update renames and/or merges secret values PER-KEY: keys absent from values
 // are preserved; an empty-string value clears that key (§4).
-func (s *CredentialService) Update(id domain.CredentialId, name *string, values map[string]any) (CredentialSummary, error) {
-	existing, ok := s.deps.Repos.Credentials.GetByID(id)
-	if !ok || existing.WorkspaceID != s.deps.Repos.Workspace.Get().ID {
-		return CredentialSummary{}, domain.NotFound("Credential")
+func (s *CredentialService) Update(owner *domain.MemberId, id domain.CredentialId, name *string, values map[string]any) (CredentialSummary, error) {
+	existing, err := s.owned(id, owner)
+	if err != nil {
+		return CredentialSummary{}, err
 	}
 	now := domain.Timestamp(s.deps.Clock.ISO())
 	patch := platform.CredentialPatch{Name: name, UpdatedAt: &now}
@@ -122,10 +152,9 @@ func (s *CredentialService) Update(id domain.CredentialId, name *string, values 
 	return summarize(updated), nil
 }
 
-func (s *CredentialService) Delete(id domain.CredentialId) error {
-	existing, ok := s.deps.Repos.Credentials.GetByID(id)
-	if !ok || existing.WorkspaceID != s.deps.Repos.Workspace.Get().ID {
-		return domain.NotFound("Credential")
+func (s *CredentialService) Delete(owner *domain.MemberId, id domain.CredentialId) error {
+	if _, err := s.owned(id, owner); err != nil {
+		return err
 	}
 	if !s.deps.Repos.Credentials.Delete(id) {
 		return domain.NotFound("Credential")

@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Check, Copy, Square } from "lucide-react";
+import { ArrowRight, Check, Copy, Play, Square } from "lucide-react";
+import { PENDING_PROMPT_KEY } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
   applyEvent,
@@ -22,6 +23,17 @@ const MAX_PROMPT = 1200;
 
 type Phase = "idle" | "compiling" | "done" | "failed";
 
+/** Running needs an account: carry the prompt over to the console's new-workflow
+ *  dialog. Signed-out visitors are sent through sign-in first and come back. */
+function runThis(prompt: string) {
+  try {
+    sessionStorage.setItem(PENDING_PROMPT_KEY, prompt);
+  } catch {
+    // Storage blocked: the dialog just opens empty.
+  }
+  window.location.assign("/workflows?new=1");
+}
+
 export function Playground() {
   const [prompt, setPrompt] = React.useState("");
   const [phase, setPhase] = React.useState<Phase>("idle");
@@ -33,6 +45,8 @@ export function Playground() {
   const [elapsed, setElapsed] = React.useState(0);
   const abort = React.useRef<AbortController | null>(null);
   const canvas = React.useRef<HTMLElement | null>(null);
+  // The prompt the shown result was compiled from (the box may have changed since).
+  const compiledPrompt = React.useRef("");
 
   React.useEffect(() => () => abort.current?.abort(), []);
 
@@ -53,6 +67,7 @@ export function Playground() {
   async function compile(text: string) {
     const trimmed = text.trim();
     if (!trimmed || phase === "compiling") return;
+    compiledPrompt.current = trimmed;
     const controller = new AbortController();
     abort.current = controller;
     setPhase("compiling");
@@ -209,21 +224,30 @@ export function Playground() {
                   {result.schedule ? ` · ${result.schedule}` : ""}
                 </p>
               </div>
-              <div className="flex rounded-md border border-border-strong p-0.5 text-[12px]" role="tablist">
-                {(["graph", "json"] as const).map((v) => (
-                  <button
-                    key={v}
-                    role="tab"
-                    aria-selected={view === v}
-                    onClick={() => setView(v)}
-                    className={cn(
-                      "rounded px-2.5 py-1 capitalize transition-colors",
-                      view === v ? "bg-surface-3 font-medium text-fg" : "text-muted hover:text-fg",
-                    )}
-                  >
-                    {v === "json" ? "JSON" : "Graph"}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-md border border-border-strong p-0.5 text-[12px]" role="tablist">
+                  {(["graph", "json"] as const).map((v) => (
+                    <button
+                      key={v}
+                      role="tab"
+                      aria-selected={view === v}
+                      onClick={() => setView(v)}
+                      className={cn(
+                        "rounded px-2.5 py-1 capitalize transition-colors",
+                        view === v ? "bg-surface-3 font-medium text-fg" : "text-muted hover:text-fg",
+                      )}
+                    >
+                      {v === "json" ? "JSON" : "Graph"}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => runThis(compiledPrompt.current)}
+                  className="flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg transition-colors hover:bg-accent-soft"
+                  title="Running needs a free account"
+                >
+                  <Play className="size-3.5" /> Run this workflow
+                </button>
               </div>
             </header>
             <div className="relative min-h-0 flex-1">

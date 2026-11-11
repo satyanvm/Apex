@@ -16,10 +16,17 @@ func NewRouter(p *services.Platform) chi.Router {
 	r.Use(middleware.Logger)
 	r.Use(corsMiddleware())
 	r.Use(authMiddleware(os.Getenv("AGENTLY_API_TOKEN")))
+	r.Use(sessionMiddleware(p))
 	r.Use(middleware.Recoverer)
 
+	auth := newAuthHandlers(p)
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", health(p))
+
+		r.Post("/auth/signup", auth.signUp)
+		r.Post("/auth/signin", auth.signIn)
+		r.Post("/auth/signout", auth.signOut)
+		r.Get("/auth/me", auth.me)
 
 		// Anonymous playground: streams a compile, never saves or runs anything.
 		r.Post("/public/compile", newPublicCompiler().handler())

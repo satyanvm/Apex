@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { AccountNav } from "@/components/account-nav";
 
 export const REPO_URL = "https://github.com/satyanvm/Apex";
 
@@ -17,24 +18,29 @@ export function Wordmark() {
   );
 }
 
-export function SiteNav({ cta = true }: { cta?: boolean }) {
+export function SiteNav({ cta = true, account = true }: { cta?: boolean; account?: boolean }) {
   return (
     <header className="border-b border-border bg-bg">
-      <div className="flex h-14 items-center gap-6 px-5">
+      <div className="flex h-14 items-center gap-4 px-4 sm:gap-6 sm:px-5">
         <Wordmark />
         <nav className="ml-auto flex items-center gap-1 text-[13px] sm:gap-3">
-          <a className="px-2 py-1 text-muted transition-colors hover:text-fg" href={REPO_URL} rel="noreferrer">
+          <a
+            className="hidden px-2 py-1 text-muted transition-colors hover:text-fg sm:block"
+            href={REPO_URL}
+            rel="noreferrer"
+          >
             GitHub
           </a>
           <ThemeToggle />
           {cta && (
             <Link
               href="/playground"
-              className="flex h-8 items-center rounded-md bg-accent px-3 font-medium text-accent-fg transition-colors hover:bg-accent-soft"
+              className="hidden h-8 items-center rounded-md border border-border-strong px-3 font-medium text-fg transition-colors hover:bg-surface-2 sm:flex"
             >
               Try the compiler
             </Link>
           )}
+          {account && <AccountNav />}
         </nav>
       </div>
     </header>

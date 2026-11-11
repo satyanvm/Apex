@@ -39,7 +39,6 @@ services:
         SITE_URL: ${APP_BASE_URL:-https://${DOMAIN}}
     environment:
       AGENTLY_API_TOKEN: ${AGENTLY_API_TOKEN:?run scripts/init-prod-env.sh}
-      AGENTLY_WEB_PASSWORD: ${AGENTLY_WEB_PASSWORD:?run scripts/init-prod-env.sh}
     depends_on: [api]
 
   api:
