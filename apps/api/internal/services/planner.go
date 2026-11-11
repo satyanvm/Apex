@@ -495,7 +495,7 @@ func graphProblems(nodes []domain.GraphNode, cat *Catalog, inputKeys map[string]
 	if errs := validateGraph(nodes, cat); len(errs) > 0 {
 		return errs
 	}
-	return validateRefs(nodes, cat, inputKeys)
+	return append(validateRefs(nodes, cat, inputKeys), placeholderProblems(nodes)...)
 }
 
 // reduceSystemPrompt assembles the node contract: graph rules + full schemas for
@@ -536,6 +536,12 @@ DATA FLOW (exactness matters — an unknown reference FAILS the run):
   Only reference fields listed in the upstream node's "outputs". Activepieces nodes
   (pieces.*) expose their whole JSON return value as "result" — e.g.
   {{outputs.fetch_stories.result}} — never invent sub-fields for them.
+- Never invent placeholder values ("your_chat_id_here", "<recipient>", "YOUR_API_KEY").
+  A value only the user knows and the request does not give (a chat id, channel,
+  recipient address, phone number, account id) goes into defaultInput as an empty
+  string and is referenced as {{input.<key>}}; the user fills it in before running.
+- Leave message format / parse-mode options (Markdown, MarkdownV2, HTML) unset: model-
+  written text does not follow those escaping rules and the API rejects the message.
 - logic.branch / logic.filter conditions: "<lhs> <op> <rhs>" with == != > < >= <=,
   each side a dotted ref (outputs.fetch.status) or literal — e.g. "outputs.fetch.status == 200".
 - logic.loop fans out its downstream branch once per item: config.items is a dotted ref

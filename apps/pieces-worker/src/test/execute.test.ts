@@ -169,6 +169,25 @@ test('dangling credentialId fails even when an env credential exists', async () 
   if (!withoutEnv.ok) assert.equal(withoutEnv.errorType, 'MissingCredential');
 });
 
+test('secret_text DB credential is trimmed before it reaches the piece', () => {
+  const auth = normalizeDbAuth({ value: '  123:abc\n' }, fakePiece()) as any;
+  assert.equal(`${auth}`, '123:abc');
+  assert.equal(auth.secret_text, '123:abc');
+});
+
+test('an empty secret_text DB credential fails as MissingCredential', async () => {
+  const exec = makeExecutePiece(registryWith(fakePiece()), async () => ({ value: ' \n' }));
+  const res = await exec({
+    piece: '@activepieces/piece-fake',
+    action: 'echo',
+    props: { text: 'x' },
+    authEnvKey: null,
+    credentialId: 'cred_blank',
+  });
+  assert.equal(res.ok, false);
+  if (!res.ok) assert.equal(res.errorType, 'MissingCredential');
+});
+
 test('normalizeDbAuth shapes DB rows per credentials-contract §7', () => {
   const secret = normalizeDbAuth({ value: 'sk-1' }, fakePiece()) as any;
   assert.equal(`Bearer ${secret}`, 'Bearer sk-1');
