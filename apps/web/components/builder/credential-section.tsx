@@ -210,7 +210,10 @@ export function CredentialModal({
     return f.control === "secret" ? "•••••• (saved)" : "(saved — leave blank to keep)";
   };
 
-  const handleSave = async () => {
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (busy || !canSave) return;
     setBusy(true);
     setApiError(null);
     try {
@@ -259,6 +262,7 @@ export function CredentialModal({
         onClose={onClose}
       />
 
+      <form onSubmit={handleSave}>
       <div className="max-h-[55vh] overflow-y-auto px-5 py-4 space-y-4">
         <div>
           <label className="block text-[12px] font-medium text-fg mb-1.5">
@@ -298,21 +302,22 @@ export function CredentialModal({
       <div className="flex items-center justify-between gap-2 border-t border-border px-5 py-3">
         <div>
           {isEdit && (
-            <Button variant="danger" size="sm" onClick={handleDelete} disabled={busy}>
+            <Button type="button" variant="danger" size="sm" onClick={handleDelete} disabled={busy}>
               <Trash2 className="size-3.5" />
               Delete
             </Button>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" size="sm" onClick={handleSave} disabled={busy || !canSave}>
+          <Button type="submit" variant="primary" size="sm" disabled={busy || !canSave}>
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create"}
           </Button>
         </div>
       </div>
+      </form>
     </Dialog>
   );
 }
