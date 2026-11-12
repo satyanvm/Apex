@@ -1172,15 +1172,20 @@ func (r *pgIntegrationRepo) DeleteByWorkspaceProvider(workspaceID domain.Workspa
 
 type pgCredentialRepo struct{ s *pgStore }
 
-const credentialCols = `id, workspace_id, type, name, data, created_at, updated_at`
+const credentialCols = `id, workspace_id, type, name, data, created_at, updated_at, owner_id`
 
 func scanCredential(row pgx.Row) (domain.Credential, error) {
 	var c domain.Credential
 	var id, ws, typ, name string
+	var owner *string
 	var data []byte
 	var created, updated any
-	if err := row.Scan(&id, &ws, &typ, &name, &data, &created, &updated); err != nil {
+	if err := row.Scan(&id, &ws, &typ, &name, &data, &created, &updated, &owner); err != nil {
 		return c, err
+	}
+	if owner != nil {
+		oid := domain.MemberId(*owner)
+		c.OwnerID = &oid
 	}
 	c.ID = domain.CredentialId(id)
 	c.WorkspaceID = domain.WorkspaceId(ws)
@@ -1232,9 +1237,9 @@ func (r *pgCredentialRepo) Insert(c domain.Credential) domain.Credential {
 		return c
 	}
 	_, err = r.s.pool.Exec(bg(),
-		`insert into credentials (`+credentialCols+`) values ($1,$2,$3,$4,$5,$6,$7)`,
+		`insert into credentials (`+credentialCols+`) values ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		string(c.ID), string(c.WorkspaceID), c.Type, c.Name,
-		data, tsArg(c.CreatedAt), tsArg(c.UpdatedAt))
+		data, tsArg(c.CreatedAt), tsArg(c.UpdatedAt), idPtrArg(c.OwnerID))
 	r.s.fail("credential.Insert", err)
 	return c
 }

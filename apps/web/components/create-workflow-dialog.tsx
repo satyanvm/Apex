@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentGlyph } from "@/components/agent-glyph";
 import { planWorkflow, createWorkflow, type WorkflowPlan } from "@/lib/api";
+import { PENDING_PROMPT_KEY } from "@/lib/auth";
 import type { AgentRole } from "@/lib/types";
 
 const EXAMPLE =
@@ -55,13 +56,23 @@ export function CreateWorkflowDialog({
     setPlan(null);
   }, [prompt]);
 
-  // Reset on close.
+  // Reset on close. On open, pick up a prompt carried over from the playground.
   React.useEffect(() => {
     if (!open) {
       setPrompt("");
       setPlan(null);
       setError(null);
       setCreating(false);
+      return;
+    }
+    try {
+      const pending = sessionStorage.getItem(PENDING_PROMPT_KEY);
+      if (pending) {
+        sessionStorage.removeItem(PENDING_PROMPT_KEY);
+        setPrompt(pending);
+      }
+    } catch {
+      // Storage blocked: start empty.
     }
   }, [open]);
 

@@ -39,6 +39,10 @@ func createWorkflow(p *services.Platform) http.HandlerFunc {
 			if err != nil {
 				return nil, 0, err
 			}
+			if err := takeLimit(p.CompileLimit, r, "compiles"); err != nil {
+				return nil, 0, err
+			}
+			input.Owner = actorID(r)
 			summary, err := p.Workflows.Create(input)
 			if err != nil {
 				return nil, 0, err
@@ -57,6 +61,9 @@ func planWorkflow(p *services.Platform) http.HandlerFunc {
 			prompt := getStringField(body, "prompt")
 			if prompt == "" {
 				return nil, 0, domain.BadRequest("prompt is required")
+			}
+			if err := takeLimit(p.CompileLimit, r, "compiles"); err != nil {
+				return nil, 0, err
 			}
 			plan, err := p.Workflows.Plan(prompt, getStringField(body, "name"),
 				getStringField(body, "email"), getStringField(body, "schedule"))
@@ -101,6 +108,9 @@ func saveWorkflowGraph(p *services.Platform) http.HandlerFunc {
 			if body == nil {
 				body = map[string]any{}
 			}
+			if _, err := requireEditable(p, r, slug); err != nil {
+				return nil, 0, err
+			}
 			nodes, err := validate.ParseSaveGraphInput(body)
 			if err != nil {
 				return nil, 0, err
@@ -144,8 +154,19 @@ func launchRun(p *services.Platform) http.HandlerFunc {
 			if err != nil {
 				return nil, 0, err
 			}
+			if _, err := requireRunnable(p, r, slug); err != nil {
+				return nil, 0, err
+			}
+			if err := takeLimit(p.RunLimit, r, "runs"); err != nil {
+				return nil, 0, err
+			}
+			if m, ok := currentMember(r); ok {
+				input.Actor = &m
+			}
 			detail, err := p.Runs.Launch(slug, input)
 			if err != nil {
+				// Refused before a run existed: don't count it.
+				refundLimit(p.RunLimit, r)
 				return nil, 0, err
 			}
 			return detail, http.StatusCreated, nil
@@ -156,7 +177,7 @@ func launchRun(p *services.Platform) http.HandlerFunc {
 func runPreflight(p *services.Platform) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handle(w, func() (any, int, error) {
-			pf, err := p.Runs.Preflight(chi.URLParam(r, "slug"))
+			pf, err := p.Runs.Preflight(chi.URLParam(r, "slug"), actorID(r))
 			return pf, http.StatusOK, err
 		})
 	}
@@ -170,7 +191,11 @@ func applyWorkflowCredential(p *services.Platform) http.HandlerFunc {
 			if id == "" {
 				return nil, 0, domain.BadRequest("credentialId is required")
 			}
-			pf, err := p.Workflows.ApplyCredential(chi.URLParam(r, "slug"), domain.CredentialId(id))
+			slug := chi.URLParam(r, "slug")
+			if _, err := requireEditable(p, r, slug); err != nil {
+				return nil, 0, err
+			}
+			pf, err := p.Workflows.ApplyCredential(slug, domain.CredentialId(id), actorID(r))
 			return pf, http.StatusOK, err
 		})
 	}

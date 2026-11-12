@@ -1,0 +1,8 @@
+# The only public entry point. Caddy gets and renews the TLS certificate for
+# {$DOMAIN} on its own. header_up overwrites anything the client sent, so the API
+# can trust this header for rate limiting.
+{$DOMAIN} {
+	reverse_proxy web:3000 {
+		header_up X-Apex-Client-IP {remote_host}
+	}
+}

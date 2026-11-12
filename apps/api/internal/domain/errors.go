@@ -79,6 +79,14 @@ func Upstream(message string) *DomainError {
 	return &DomainError{Code: CodeUpstreamFailed, Message: message}
 }
 
+func Forbidden(message string) *DomainError {
+	return &DomainError{Code: CodeForbidden, Message: message}
+}
+
+func Unauthorized(message string) *DomainError {
+	return &DomainError{Code: CodeUnauthorized, Message: message}
+}
+
 // Errorf builds an internal error with a formatted message.
 func Errorf(code ErrorCode, format string, args ...any) *DomainError {
 	return &DomainError{Code: code, Message: fmt.Sprintf(format, args...)}

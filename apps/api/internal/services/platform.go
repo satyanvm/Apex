@@ -29,6 +29,12 @@ type Platform struct {
 	Stats         *StatsService
 	Integrations  *IntegrationService
 	Credentials   *CredentialService
+	Accounts      *AccountService
+
+	// RunLimit caps manual runs per account; CompileLimit caps signed-in
+	// compiles per account. Both per rolling 24 hours.
+	RunLimit     *RateLimiter
+	CompileLimit *RateLimiter
 }
 
 // Options configure platform construction. Tests may provide in-memory
@@ -109,5 +115,8 @@ func NewPlatform(opts Options) *Platform {
 		Stats:         NewStatsService(deps),
 		Integrations:  NewIntegrationService(deps, &http.Client{Timeout: 20 * time.Second}),
 		Credentials:   NewCredentialService(deps),
+		Accounts:      NewAccountService(deps),
+		RunLimit:      NewRateLimiter(limitFromEnv("RUN_LIMIT_PER_DAY", 20), 24*time.Hour, time.Now),
+		CompileLimit:  NewRateLimiter(limitFromEnv("COMPILE_LIMIT_PER_DAY", 20), 24*time.Hour, time.Now),
 	}
 }

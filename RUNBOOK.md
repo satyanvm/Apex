@@ -92,12 +92,15 @@ cd apps/web && pnpm build
 
 ## Deploying
 
+For a public launch with HTTPS, follow [DEPLOY.md](DEPLOY.md). The notes below
+cover running the services as containers without the Caddy front end.
+
 Each service has a Dockerfile (build context: repo root). The full stack runs
 with Compose on one host:
 
 ```bash
 cp .env.example .env            # fill credentials; set ENV=production,
-                                # AGENTLY_API_TOKEN and AGENTLY_WEB_PASSWORD
+                                # AGENTLY_API_TOKEN and AGENTLY_CREDENTIALS_KEY
 cd apps/pieces-worker && npm install && npm run build && npm run gen:embeddings && cd -
 docker compose -f docker-compose.yml -f docker-compose.app.yml up -d --build
 ```
@@ -112,12 +115,13 @@ Before exposing the app:
 - `ENV=production` also requires `AGENTLY_CREDENTIALS_KEY`, which encrypts
   stored credentials. The API encrypts any existing plaintext rows when it
   starts. Back the key up: without it stored credentials cannot be read.
-- `AGENTLY_WEB_PASSWORD` puts the whole UI and API behind a password prompt.
-  Serve it over HTTPS (a reverse proxy such as Caddy or a platform load
-  balancer) so the password is not sent in clear text.
+- The console needs an account: anyone can sign up at `/signup`, and each
+  account sees and uses only the credentials it saved. Serve the site over
+  HTTPS (a reverse proxy such as Caddy or a platform load balancer); with
+  `ENV=production` the session cookie is only sent over HTTPS.
 - `APP_BASE_URL` must be the public web URL: webhook URLs registered with
   providers and the Google OAuth redirect are built from it. Webhook ingress
-  (`/api/hooks/*`) stays reachable without the password.
+  (`/api/hooks/*`) stays reachable without signing in.
 - Change the Compose Postgres passwords, or point `DATABASE_URL` at a managed
   Postgres and apply `packages/db/migrations` in order (skipping the
   Supabase-only `0002_rls.sql` and `0004_realtime.sql`).

@@ -142,6 +142,8 @@ type CreateWorkflowInput struct {
 	Prompt string
 	// Email is an optional recipient woven into the workflow's default run input.
 	Email string
+	// Owner is the signed-in member creating it; set by the HTTP layer.
+	Owner *domain.MemberId
 }
 
 func ParseCreateWorkflowInput(body map[string]any) (CreateWorkflowInput, error) {
@@ -374,6 +376,9 @@ type LaunchRunInput struct {
 	// SkipCredentialCheck launches even when the preflight finds nodes without
 	// an account (the operator knows the runtime env provides them).
 	SkipCredentialCheck bool
+	// Actor is the signed-in member starting the run; set by the HTTP layer,
+	// never parsed from the body. Nil for schedules and webhooks.
+	Actor *domain.Member
 }
 
 func ParseLaunchRunInput(body map[string]any) (LaunchRunInput, error) {

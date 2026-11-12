@@ -206,8 +206,10 @@ async def append_log(
     reasoning: bool = False,
 ) -> None:
     """Append one append-only log line (seq allocated max+1, like the Go worker)."""
-    async with _conn() as conn:
-        # Allocate seq and insert in one connection to keep it monotonic.
+    async with _conn() as conn, conn.transaction():
+        # Parallel branches log at the same time; a per-run transaction lock makes
+        # max+1 and the insert atomic so two lines never get the same seq.
+        await conn.execute("select pg_advisory_xact_lock(hashtext(%s))", (run_id,))
         cur = await conn.execute(
             "select coalesce(max(seq), -1) + 1 from run_logs where run_id = %s",
             (run_id,),

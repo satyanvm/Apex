@@ -42,7 +42,7 @@ func accountByType(pf RunPreflight, typ string) *PreflightAccount {
 
 func TestPreflightListsAccountsToConnect(t *testing.T) {
 	p := setupPreflight(t)
-	pf, err := p.Runs.Preflight("ai-digest")
+	pf, err := p.Runs.Preflight("ai-digest", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestPreflightEnvFallbackSatisfies(t *testing.T) {
 	p := setupPreflight(t)
 	t.Setenv("GITHUB_TOKEN", "ghp_x")
 	t.Setenv("AP_SLACK_AUTH", "xoxb")
-	pf, _ := p.Runs.Preflight("ai-digest")
+	pf, _ := p.Runs.Preflight("ai-digest", nil)
 	if !pf.Ready {
 		t.Fatalf("env should satisfy every node: %+v", pf)
 	}
@@ -110,11 +110,11 @@ func TestCheckCanBeTurnedOff(t *testing.T) {
 
 func TestApplyCredentialConnectsEveryNode(t *testing.T) {
 	p := setupPreflight(t)
-	cred, err := p.Credentials.Create("My GitHub", "github", map[string]any{"GITHUB_TOKEN": "ghp_x"})
+	cred, err := p.Credentials.Create(nil, "My GitHub", "github", map[string]any{"GITHUB_TOKEN": "ghp_x"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pf, err := p.Workflows.ApplyCredential("ai-digest", cred.ID)
+	pf, err := p.Workflows.ApplyCredential("ai-digest", cred.ID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,10 +130,10 @@ func TestApplyCredentialConnectsEveryNode(t *testing.T) {
 	}
 
 	// Deleting it turns both nodes into "credential deleted".
-	if err := p.Credentials.Delete(cred.ID); err != nil {
+	if err := p.Credentials.Delete(nil, cred.ID); err != nil {
 		t.Fatal(err)
 	}
-	pf, _ = p.Runs.Preflight("ai-digest")
+	pf, _ = p.Runs.Preflight("ai-digest", nil)
 	gh := accountByType(pf, "github")
 	if gh == nil || gh.Nodes[0].Problem != ProblemCredentialDeleted {
 		t.Fatalf("want credential_deleted, got %+v", gh)
@@ -142,18 +142,18 @@ func TestApplyCredentialConnectsEveryNode(t *testing.T) {
 
 func TestPieceCredentialMissingRequiredField(t *testing.T) {
 	p := setupPreflight(t)
-	cred, err := p.Credentials.Create("Slack", "pieces.slack", map[string]any{"access_token": "xoxb"})
+	cred, err := p.Credentials.Create(nil, "Slack", "pieces.slack", map[string]any{"access_token": "xoxb"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Workflows.ApplyCredential("ai-digest", cred.ID); err != nil {
+	if _, err := p.Workflows.ApplyCredential("ai-digest", cred.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 	// Clearing the token (allowed by Update) leaves the node incomplete.
-	if _, err := p.Credentials.Update(cred.ID, nil, map[string]any{"access_token": ""}); err != nil {
+	if _, err := p.Credentials.Update(nil, cred.ID, nil, map[string]any{"access_token": ""}); err != nil {
 		t.Fatal(err)
 	}
-	pf, _ := p.Runs.Preflight("ai-digest")
+	pf, _ := p.Runs.Preflight("ai-digest", nil)
 	slack := accountByType(pf, "pieces.slack")
 	if slack == nil || slack.Nodes[0].Problem != ProblemIncomplete || slack.Nodes[0].MissingKeys[0] != "access_token" {
 		t.Fatalf("want incomplete access_token, got %+v", slack)

@@ -22,7 +22,7 @@ import (
 func listCredentials(p *services.Platform) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handle(w, func() (any, int, error) {
-			return p.Credentials.List(), http.StatusOK, nil
+			return p.Credentials.List(actorID(r)), http.StatusOK, nil
 		})
 	}
 }
@@ -35,7 +35,7 @@ func createCredential(p *services.Platform) http.HandlerFunc {
 			if err != nil {
 				return nil, 0, err
 			}
-			summary, err := p.Credentials.Create(input.Name, input.Type, input.Values)
+			summary, err := p.Credentials.Create(actorID(r), input.Name, input.Type, input.Values)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -53,7 +53,7 @@ func updateCredential(p *services.Platform) http.HandlerFunc {
 				return nil, 0, err
 			}
 			id := domain.CredentialId(chi.URLParam(r, "id"))
-			summary, err := p.Credentials.Update(id, input.Name, input.Values)
+			summary, err := p.Credentials.Update(actorID(r), id, input.Name, input.Values)
 			if err != nil {
 				return nil, 0, err
 			}
@@ -65,7 +65,7 @@ func updateCredential(p *services.Platform) http.HandlerFunc {
 func deleteCredential(p *services.Platform) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := domain.CredentialId(chi.URLParam(r, "id"))
-		if err := p.Credentials.Delete(id); err != nil {
+		if err := p.Credentials.Delete(actorID(r), id); err != nil {
 			handle(w, func() (any, int, error) { return nil, 0, err })
 			return
 		}

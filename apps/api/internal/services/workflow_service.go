@@ -139,9 +139,11 @@ func (s *WorkflowService) Create(input validate.CreateWorkflowInput) (domain.Wor
 	// workflows compiled from similar prompts (or matching the seeded AI Digest) never
 	// block each other. Creating should always succeed, n8n-style.
 	slug := s.uniqueSlug(slugify(name))
-	var ownerID *domain.MemberId
-	if members := s.deps.Repos.Members.All(); len(members) > 0 {
-		ownerID = &members[0].ID
+	ownerID := input.Owner
+	if ownerID == nil {
+		if members := s.deps.Repos.Members.All(); len(members) > 0 {
+			ownerID = &members[0].ID
+		}
 	}
 
 	description := input.Description

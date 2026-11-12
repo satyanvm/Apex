@@ -1,6 +1,29 @@
 package platform
 
-import "github.com/agently/api/internal/domain"
+import (
+	"errors"
+	"time"
+
+	"github.com/agently/api/internal/domain"
+)
+
+// ErrEmailTaken is returned when an account already uses the email.
+var ErrEmailTaken = errors.New("email already registered")
+
+// AccountRepo stores sign-in accounts (a member plus a password hash) and their
+// sessions. Session tokens are stored hashed; callers pass the hash.
+type AccountRepo interface {
+	// Create inserts the member and its account together.
+	Create(member domain.Member, passwordHash string) error
+	// ByEmail looks an account up by email, ignoring case.
+	ByEmail(email string) (member domain.Member, passwordHash string, ok bool)
+	// Exists reports whether the member has an account (can sign in).
+	Exists(id domain.MemberId) bool
+	CreateSession(tokenHash string, member domain.MemberId, expiresAt time.Time) error
+	// SessionMember returns the member of an unexpired session.
+	SessionMember(tokenHash string, now time.Time) (domain.Member, bool)
+	DeleteSession(tokenHash string)
+}
 
 // Storage interfaces. Services depend only on these, never on a concrete store,
 // so the in-memory implementation can be replaced by a Postgres one without
@@ -171,6 +194,7 @@ type CredentialRepo interface {
 
 // Repositories is the full set of repositories handed to services.
 type Repositories struct {
+	Accounts      AccountRepo
 	Workspace     WorkspaceRepo
 	Members       MemberRepo
 	Agents        AgentDefinitionRepo
