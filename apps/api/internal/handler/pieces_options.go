@@ -10,17 +10,19 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/agently/api/internal/domain"
 	"github.com/agently/api/internal/services"
 )
 
 const piecesOptionsMaxBody = 1 << 20
 
-func piecesOptions(_ *services.Platform) http.HandlerFunc {
+func piecesOptions(p *services.Platform) http.HandlerFunc {
 	client := &http.Client{Timeout: 12 * time.Second}
 	return func(w http.ResponseWriter, r *http.Request) {
 		base := os.Getenv("PIECES_WORKER_URL")
@@ -31,6 +33,31 @@ func piecesOptions(_ *services.Platform) http.HandlerFunc {
 		if err != nil {
 			writeOptionsError(w, "unreadable request body", "BadRequest")
 			return
+		}
+		// The worker looks options up with the named credential, or with an env
+		// var of the server's. Only the caller's own credential is allowed.
+		var lookup struct {
+			CredentialID string `json:"credentialId"`
+			AuthEnvKey   string `json:"authEnvKey"`
+		}
+		_ = json.Unmarshal(body, &lookup)
+		if lookup.AuthEnvKey != "" && lookup.CredentialID == "" {
+			writeOptionsError(w, "connect your own account to load these options", "MissingCredential")
+			return
+		}
+		if lookup.CredentialID != "" {
+			if err := p.Credentials.CheckOwned(domain.CredentialId(lookup.CredentialID), actorID(r)); err != nil {
+				writeOptionsError(w, "credential not found", "MissingCredential")
+				return
+			}
+			// Drop the env fallback so a missing credential can't fall through to it.
+			var raw map[string]any
+			if json.Unmarshal(body, &raw) == nil {
+				delete(raw, "authEnvKey")
+				if clean, err := json.Marshal(raw); err == nil {
+					body = clean
+				}
+			}
 		}
 		resp, err := client.Post(base+"/options", "application/json", bytes.NewReader(body))
 		if err != nil {

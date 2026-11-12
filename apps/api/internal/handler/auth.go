@@ -14,8 +14,9 @@ import (
 // never hold it. An empty token disables the gate — main refuses to start that
 // way when ENV=production.
 //
-// Exempt: the health probe, and webhook ingress (/api/hooks/*), which third-party
-// providers call directly and which only ever launches the trigger's own workflow.
+// Exempt: the health probe; webhook ingress (/api/hooks/*), which third-party
+// providers call directly and which only ever launches the trigger's own workflow;
+// and the rate-limited public compile (/api/public/*), which persists nothing.
 func authMiddleware(token string) func(http.Handler) http.Handler {
 	want := []byte("Bearer " + token)
 	return func(next http.Handler) http.Handler {
@@ -35,7 +36,8 @@ func authMiddleware(token string) func(http.Handler) http.Handler {
 }
 
 func authExempt(path string) bool {
-	return path == "/api/health" || strings.HasPrefix(path, "/api/hooks/")
+	return path == "/api/health" || strings.HasPrefix(path, "/api/hooks/") ||
+		strings.HasPrefix(path, "/api/public/") || strings.HasPrefix(path, "/api/auth/")
 }
 
 // corsOrigins reads CORS_ORIGINS (comma-separated); localhost when unset.

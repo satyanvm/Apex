@@ -76,6 +76,9 @@ func triggerLifecycle(p *services.Platform, op string) http.HandlerFunc {
 			if err != nil {
 				return nil, 0, err
 			}
+			if err := requireOwnTrigger(p, r, slug, node); err != nil {
+				return nil, 0, err
+			}
 			req, ok := services.BuildTriggerRequest(string(wf.ID), node)
 			if !ok {
 				return nil, 0, domain.BadRequest("node " + nodeKey + " is not a pieces trigger")
@@ -99,6 +102,9 @@ func triggerPoll(p *services.Platform) http.HandlerFunc {
 			nodeKey := chi.URLParam(r, "nodeKey")
 			wf, node, err := findTriggerNode(p, slug, nodeKey)
 			if err != nil {
+				return nil, 0, err
+			}
+			if err := requireOwnTrigger(p, r, slug, node); err != nil {
 				return nil, 0, err
 			}
 			req, ok := services.BuildTriggerRequest(string(wf.ID), node)
@@ -126,6 +132,19 @@ func triggerPoll(p *services.Platform) http.HandlerFunc {
 			return map[string]any{"ok": true, "events": len(res.Events), "runs": len(runIds), "runIds": runIds}, http.StatusOK, nil
 		})
 	}
+}
+
+// requireOwnTrigger lets only the workflow's owner register, remove or poll a
+// trigger, and only with a credential that owner saved: the worker calls the
+// provider with it.
+func requireOwnTrigger(p *services.Platform, r *http.Request, slug string, node domain.GraphNode) error {
+	if _, err := requireEditable(p, r, slug); err != nil {
+		return err
+	}
+	if id := services.NodeCredentialID(node); id != "" {
+		return p.Credentials.CheckOwned(domain.CredentialId(id), actorID(r))
+	}
+	return nil
 }
 
 func findTriggerNode(p *services.Platform, slug, nodeKey string) (domain.WorkflowSummary, domain.GraphNode, error) {

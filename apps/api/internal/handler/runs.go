@@ -34,7 +34,15 @@ func getRun(p *services.Platform) http.HandlerFunc {
 func cancelRun(p *services.Platform) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		handle(w, func() (any, int, error) {
-			run, err := p.Runs.Cancel(asRunID(chi.URLParam(r, "id")))
+			id := asRunID(chi.URLParam(r, "id"))
+			detail, err := p.Runs.Get(id)
+			if err != nil {
+				return nil, 0, err
+			}
+			if _, err := requireRunnable(p, r, detail.Run.WorkflowSlug); err != nil {
+				return nil, 0, err
+			}
+			run, err := p.Runs.Cancel(id)
 			return run, http.StatusOK, err
 		})
 	}

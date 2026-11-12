@@ -312,8 +312,11 @@ type Credential struct {
 	Type        string         `json:"type"` // credential type id (§3)
 	Name        string         `json:"name"`
 	Data        map[string]any `json:"-"` // secret values, never marshaled
-	CreatedAt   Timestamp      `json:"createdAt"`
-	UpdatedAt   Timestamp      `json:"updatedAt"`
+	// OwnerID is the member who saved it; only that member can see or use it.
+	// Nil for credentials saved before accounts existed.
+	OwnerID   *MemberId `json:"-"`
+	CreatedAt Timestamp `json:"createdAt"`
+	UpdatedAt Timestamp `json:"updatedAt"`
 }
 
 /* ========================= Dashboard ========================== */

@@ -59,6 +59,8 @@ type store struct {
 	activity     []domain.ActivityEvent
 	integrations []domain.Integration
 	credentials  []domain.Credential
+	accounts     map[domain.MemberId]string // member → password hash
+	authSessions map[string]memSession      // token hash → session
 }
 
 // NewMemoryRepositories builds a complete in-memory Repositories from seed data.
@@ -82,6 +84,7 @@ func NewMemoryRepositories(data MemoryData) *Repositories {
 		activity:  append([]domain.ActivityEvent(nil), data.Activity...),
 	}
 	return &Repositories{
+		Accounts:      &accountRepo{s},
 		Workspace:     &workspaceRepo{s},
 		Members:       &memberRepo{s},
 		Agents:        &agentRepo{s},

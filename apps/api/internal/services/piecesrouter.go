@@ -94,9 +94,12 @@ func routeClusters(ctx context.Context, cat *Catalog, prompt string, clusterKeys
 		return nil, nil // nothing to route is a valid answer, not a failure
 	}
 
+	stage := startCompileStage(ctx, "route", 0, fmt.Sprintf("Searching %d integrations", len(clusterKeys)))
+
 	// Recall layer: embeddings shrink the directory before the router reads it.
 	keys, err := prefilterPieceClusters(ctx, cat, prompt, clusterKeys, routerPrefilterTop)
 	if err != nil {
+		stage.failed(CompileEvent{})
 		return nil, fmt.Errorf("piece prefilter: %w", err)
 	}
 	if len(keys) == 0 {
@@ -114,6 +117,7 @@ Return {"clusters": []} if none apply.`
 	user := "Request: " + prompt + "\n\nCluster directory:\n" + clusterDirectory(cat, keys)
 	raw, err := planLLMWith(ctx, mapModel(), 1024, routerTimeout, system, []llmMsg{{Role: "user", Content: user}})
 	if err != nil {
+		stage.failed(CompileEvent{})
 		return nil, fmt.Errorf("cluster router: %w", err)
 	}
 	var out struct {
@@ -121,6 +125,7 @@ Return {"clusters": []} if none apply.`
 		Pieces   []string `json:"pieces"` // tolerated: the field name used by an earlier prompt
 	}
 	if err := json.Unmarshal([]byte(extractJSON(raw)), &out); err != nil {
+		stage.failed(CompileEvent{})
 		return nil, fmt.Errorf("cluster router returned unparseable JSON: %w", err)
 	}
 	picked := out.Clusters
@@ -152,9 +157,18 @@ Return {"clusters": []} if none apply.`
 	}
 	if len(selected) == 0 && len(picked) > 0 {
 		// The model answered but named nothing in the directory it was shown.
+		stage.failed(CompileEvent{})
 		return nil, fmt.Errorf("cluster router picked %d cluster(s), none of them in the offered directory: %s",
 			len(picked), truncateStr(strings.Join(picked, ", "), 200))
 	}
+	labels := make([]string, 0, len(selected))
+	for _, key := range selected {
+		labels = append(labels, displayCluster(cat.Clusters[key].Label))
+	}
+	stage.done(CompileEvent{
+		Detail: fmt.Sprintf("Embeddings kept %d of %d integrations; the router picked %d", len(keys), len(clusterKeys), len(selected)),
+		Items:  labels, Count: len(selected), Total: len(clusterKeys),
+	})
 	return selected, nil
 }
 

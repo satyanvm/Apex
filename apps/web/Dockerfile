@@ -9,7 +9,8 @@ COPY apps/web ./apps/web
 RUN pnpm install --frozen-lockfile
 # Next.js bakes rewrite destinations in at build time.
 ARG API_PROXY_TARGET=http://api:8090
-ENV API_PROXY_TARGET=$API_PROXY_TARGET NEXT_TELEMETRY_DISABLED=1
+ARG SITE_URL=http://localhost:3000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET SITE_URL=$SITE_URL NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @agently/web build
 
 FROM node:22-slim

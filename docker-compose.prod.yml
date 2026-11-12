@@ -1,0 +1,144 @@
+# The whole stack on one host. Caddy is the only service with published ports;
+# everything else is reachable only from inside this Compose network.
+#
+#   ./scripts/init-prod-env.sh yourdomain.com
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# See DEPLOY.md.
+x-service-env: &service-env
+  DATABASE_URL: postgresql://agently:${POSTGRES_PASSWORD:?run scripts/init-prod-env.sh}@postgres:5432/agently
+  TEMPORAL_HOSTPORT: temporal:7233
+  PIECES_WORKER_URL: http://pieces:7391
+  ENV: production
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  caddy:
+    <<: *restart
+    image: caddy:2.10-alpine
+    depends_on: [web]
+    environment:
+      DOMAIN: ${DOMAIN:?run scripts/init-prod-env.sh}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  web:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_PROXY_TARGET: http://api:8090
+        SITE_URL: ${APP_BASE_URL:-https://${DOMAIN}}
+    environment:
+      AGENTLY_API_TOKEN: ${AGENTLY_API_TOKEN:?run scripts/init-prod-env.sh}
+    depends_on: [api]
+
+  api:
+    <<: *restart
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    env_file: .env
+    environment:
+      <<: *service-env
+      API_ADDR: ":8090"
+      APP_BASE_URL: ${APP_BASE_URL:-https://${DOMAIN}}
+      CORS_ORIGINS: ${APP_BASE_URL:-https://${DOMAIN}}
+      PLANNER_MAP_MODEL: ${PLANNER_MAP_MODEL:-gemini-3.1-flash-lite}
+      PLANNER_MODEL: ${PLANNER_MODEL:-gemini-3.5-flash}
+      # Must match packages/nodes/pieces/embeddings.json or the API won't start.
+      PLANNER_EMBED_MODEL: gemini-embedding-001
+      PLANNER_EMBED_DIMS: "768"
+      PUBLIC_CLIENT_IP_HEADER: X-Apex-Client-IP
+      SCHEDULER: "1"
+      PIECES_POLLER: "1"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  reasoner:
+    <<: *restart
+    build: { context: ., dockerfile: apps/reasoner/Dockerfile }
+    env_file: .env
+    environment: *service-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  pieces:
+    <<: *restart
+    build: { context: ., dockerfile: apps/pieces-worker/Dockerfile }
+    env_file: .env
+    environment:
+      <<: *service-env
+      # Loading all 707 integrations needs more than Node's default heap.
+      NODE_OPTIONS: --max-old-space-size=${PIECES_HEAP_MB:-4096}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      temporal: { condition: service_started }
+
+  migrate:
+    image: postgres:16
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-prod-env.sh}
+    entrypoint: ["sh", "/migrate-prod.sh"]
+    volumes:
+      - ./scripts/migrate-prod.sh:/migrate-prod.sh:ro
+      - ./packages/db/migrations:/migrations:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  postgres:
+    <<: *restart
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agently
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run scripts/init-prod-env.sh}
+      POSTGRES_DB: agently
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agently -d agently"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  temporal-postgres:
+    <<: *restart
+    image: postgres:16
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:?run scripts/init-prod-env.sh}
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  temporal:
+    <<: *restart
+    image: temporalio/auto-setup:1.25.2
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_DB_PASSWORD:?run scripts/init-prod-env.sh}
+      POSTGRES_SEEDS: temporal-postgres
+    depends_on:
+      temporal-postgres: { condition: service_healthy }
+
+volumes:
+  caddy-data:
+  caddy-config:
+  pgdata:
+  temporal-pgdata:

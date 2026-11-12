@@ -37,7 +37,7 @@ export function Sidebar() {
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[13px] font-semibold leading-tight text-fg">
-              Agently
+              Apex
             </span>
             <span className="block truncate text-[11px] leading-tight text-faint">
               Durable workflows

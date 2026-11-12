@@ -49,6 +49,7 @@ type pgStore struct {
 func NewPostgresRepositories(pool *pgxpool.Pool, log Logger) *Repositories {
 	s := &pgStore{pool: pool, log: log}
 	return &Repositories{
+		Accounts:      &pgAccountRepo{s},
 		Workspace:     &pgWorkspaceRepo{s},
 		Members:       &pgMemberRepo{s},
 		Agents:        &pgAgentRepo{s},

@@ -10,6 +10,7 @@
  */
 
 import type { WorkflowRun, LogEntry, AgentNode, AgentMessage, BrowserSession } from "./types";
+import { apiErrorMessage, signInHref } from "./auth";
 
 /** Cursor-paginated envelope returned by list endpoints. */
 interface Page<T> {
@@ -84,7 +85,7 @@ async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
     // says nothing about that, so name the likely cause.
     if (e instanceof TypeError) {
       throw new Error(
-        "Couldn't reach the Agently server — it may be down or restarting. " +
+        "Couldn't reach the Apex server — it may be down or restarting. " +
           "Check `pnpm agently:status` and try again.",
       );
     }
@@ -92,6 +93,15 @@ async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401 && typeof window !== "undefined") {
+      // The session expired or was signed out elsewhere.
+      window.location.assign(signInHref(window.location.pathname + window.location.search));
+      throw new Error("Sign in to continue.");
+    }
+    if (res.status === 403 || res.status === 429) {
+      // Ownership and daily-limit refusals carry a message meant for people.
+      throw new Error(apiErrorMessage(body) ?? `API ${res.status} on ${path}`);
+    }
     throw new Error(`API ${res.status} on ${path}: ${body.slice(0, 200)}`);
   }
   return res.json() as Promise<T>;

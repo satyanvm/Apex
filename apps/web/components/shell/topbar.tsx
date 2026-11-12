@@ -7,6 +7,7 @@ import { Search, Bell, Plus, ChevronRight } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { CommandPalette } from "./command-palette";
+import { AccountNav } from "@/components/account-nav";
 
 export interface Crumb {
   label: string;
@@ -83,6 +84,7 @@ export function TopBar({
             <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent ring-2 ring-surface" />
           </Link>
 
+          <AccountNav />
         </div>
       </header>
 

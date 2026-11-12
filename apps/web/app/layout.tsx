@@ -4,10 +4,10 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 
 export const metadata: Metadata = {
-  title: "Agently — The cloud for autonomous agents",
+  title: "Apex: prompts in, durable workflows out",
   description:
-    "Deploy autonomous AI agent workflows that keep running after you disconnect. Monitor live logs, browser activity, multi-agent graphs, cost and runtime — in one premium control plane.",
-  metadataBase: new URL("https://agently.dev"),
+    "Apex compiles a plain-English request into a validated workflow graph over 6,758 real integration actions, then runs it durably on Temporal.",
+  metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
 };
 
 // Runs before paint to apply the saved/system theme with no flash of the

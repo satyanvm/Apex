@@ -122,12 +122,10 @@ def load() -> Config:
         temporal_task_queue=os.getenv("TEMPORAL_TASK_QUEUE", "agently-reasoner"),
         pieces_task_queue=os.getenv("PIECES_TASK_QUEUE", "agently-pieces"),
         langfuse_host=os.getenv("LANGFUSE_HOST", "http://localhost:3001"),
-        langfuse_public_key=_require(
-            "LANGFUSE_PUBLIC_KEY", "every LLM call is traced to Langfuse"
-        ),
-        langfuse_secret_key=_require(
-            "LANGFUSE_SECRET_KEY", "every LLM call is traced to Langfuse"
-        ),
+        # Tracing is optional: unset means runs are untraced, and the run page
+        # shows no trace link rather than a dead one.
+        langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY", "").strip(),
+        langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY", "").strip(),
         # Reasoning gets the strongest model; synthesis is summarizing work
         # already done, so it runs a tier down. Free-tier keys hit
         # 429 at 5 req/min on the non-lite flash models; lite tiers allow more.
@@ -138,13 +136,12 @@ def load() -> Config:
         # Ollama's default context is a few thousand tokens and it truncates
         # silently; agent prompts carry whole upstream outputs, so ask for more.
         ollama_num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "16384")),
-        browserbase_api_key=_require(
-            "BROWSERBASE_API_KEY", "tool.browser drives a real Browserbase session"
-        ),
-        browserbase_project_id=_require(
-            "BROWSERBASE_PROJECT_ID", "tool.browser drives a real Browserbase session"
-        ),
-        smtp_host=_require("SMTP_HOST", "output.email delivers over SMTP"),
+        # Browserbase and SMTP only matter to the node types that use them. A
+        # run reaching one without its credentials fails that node with the reason
+        # (browser.run_browse, nodes._email), so they are not required at boot.
+        browserbase_api_key=os.getenv("BROWSERBASE_API_KEY", "").strip(),
+        browserbase_project_id=os.getenv("BROWSERBASE_PROJECT_ID", "").strip(),
+        smtp_host=os.getenv("SMTP_HOST", "").strip(),
         smtp_port=os.getenv("SMTP_PORT", "587"),
         smtp_user=os.getenv("SMTP_USER", ""),
         smtp_pass=os.getenv("SMTP_PASS", ""),

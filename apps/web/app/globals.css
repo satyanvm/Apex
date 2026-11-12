@@ -365,6 +365,15 @@
 /* ------------------------------------------------------------------ *
    React Flow customization
  * ------------------------------------------------------------------ */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-controls-button-background-color: var(--color-surface-2);
+  --xy-controls-button-background-color-hover: var(--color-surface-3);
+  --xy-controls-button-color: var(--color-muted);
+  --xy-controls-button-color-hover: var(--color-fg);
+  --xy-controls-button-border-color: var(--color-border);
+}
+
 .react-flow__node {
   cursor: pointer;
 }
@@ -398,4 +407,18 @@
 .react-flow__controls-button:hover {
   background: var(--color-surface-3);
   color: var(--color-fg);
+}
+
+/* ------------------------------------------------------------------ *
+   Playground
+ * ------------------------------------------------------------------ */
+@keyframes node-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+.playground-node {
+  animation: node-in 320ms var(--ease-out-soft) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .playground-node { animation: none; }
 }

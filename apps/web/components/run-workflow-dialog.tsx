@@ -11,9 +11,11 @@ import { ConnectAccounts } from "@/components/connect-accounts";
 import type { Workflow } from "@/lib/types";
 
 /**
- * Launch dialog: pre-fills topic + recipient email from the workflow's stored default
- * input (the plan), lets you tweak them for this one run, then launches and navigates
- * to the live run page. Per-run values override the workflow defaults server-side.
+ * Launch dialog: one field per text value in the workflow's stored default input
+ * (the plan's {{input.x}} values: topic, recipient email, Telegram chat id, …),
+ * pre-filled, editable for this one run. Values the plan left empty are ones only
+ * the user knows, so launch waits until they are filled. Per-run values override
+ * the workflow defaults server-side.
  */
 export function RunWorkflowDialog({
   open,
@@ -26,8 +28,12 @@ export function RunWorkflowDialog({
 }) {
   const router = useRouter();
   const defaults = (workflow.defaultInput ?? {}) as Record<string, unknown>;
-  const [topic, setTopic] = React.useState("");
-  const [email, setEmail] = React.useState("");
+  const keys = React.useMemo(
+    () => Object.keys(defaults).filter((k) => typeof defaults[k] === "string"),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workflow.defaultInput],
+  );
+  const [values, setValues] = React.useState<Record<string, string>>({});
   const [launching, setLaunching] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // null while loading or when the check itself failed (launch then decides).
@@ -35,8 +41,7 @@ export function RunWorkflowDialog({
 
   React.useEffect(() => {
     if (open) {
-      setTopic(typeof defaults.topic === "string" ? defaults.topic : "");
-      setEmail(typeof defaults.email === "string" ? defaults.email : "");
+      setValues(Object.fromEntries(keys.map((k) => [k, String(defaults[k])])));
       setError(null);
       setLaunching(false);
       setPreflight(null);
@@ -46,14 +51,17 @@ export function RunWorkflowDialog({
   }, [open]);
 
   const blocked = preflight !== null && !preflight.ready;
+  const missing = keys.filter((k) => !(values[k] ?? "").trim());
 
   const onLaunch = async (skipCredentialCheck = false) => {
     setLaunching(true);
     setError(null);
     try {
       const input: Record<string, unknown> = {};
-      if (topic.trim()) input.topic = topic.trim();
-      if (email.trim()) input.email = email.trim();
+      for (const k of keys) {
+        const v = (values[k] ?? "").trim();
+        if (v) input[k] = v;
+      }
       const runId = await launchRun(workflow.slug, input, { skipCredentialCheck });
       onOpenChange(false);
       router.push(`/runs/${runId}`);
@@ -71,17 +79,21 @@ export function RunWorkflowDialog({
         onClose={() => onOpenChange(false)}
       />
       <div className="space-y-3 px-5 py-4">
-        <Field label="Topic">
-          <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="AI" />
-        </Field>
-        <Field label="Email the digest to">
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@gmail.com"
-          />
-        </Field>
+        {keys.map((k) => (
+          <Field key={k} label={inputLabel(k)}>
+            <Input
+              type={/email/i.test(k) ? "email" : "text"}
+              value={values[k] ?? ""}
+              onChange={(e) => setValues((prev) => ({ ...prev, [k]: e.target.value }))}
+              placeholder={inputHint(k)}
+            />
+          </Field>
+        ))}
+        {missing.length > 0 && (
+          <p className="text-[12px] text-muted">
+            Fill in {missing.map(inputLabel).join(", ")} to launch.
+          </p>
+        )}
         {preflight && !preflight.ready && (
           <ConnectAccounts slug={workflow.slug} preflight={preflight} onChange={setPreflight} />
         )}
@@ -98,7 +110,7 @@ export function RunWorkflowDialog({
             className="mr-auto text-[12px] text-faint underline-offset-2 hover:underline"
             title="Launch anyway, e.g. when the server's environment already provides these tokens"
             onClick={() => onLaunch(true)}
-            disabled={launching}
+            disabled={launching || missing.length > 0}
           >
             Run anyway
           </button>
@@ -106,13 +118,30 @@ export function RunWorkflowDialog({
         <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
-        <Button variant="primary" size="sm" onClick={() => onLaunch()} disabled={launching || blocked}>
+        <Button variant="primary" size="sm" onClick={() => onLaunch()} disabled={launching || blocked || missing.length > 0}>
           {launching ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
           Launch run
         </Button>
       </div>
     </Dialog>
   );
+}
+
+/** "chat_id" → "Chat ID", "email" → "Email the digest to". */
+function inputLabel(key: string): string {
+  if (key === "email") return "Email the digest to";
+  if (key === "topic") return "Topic";
+  return key
+    .replace(/[_-]+/g, " ")
+    .replace(/\bid\b/gi, "ID")
+    .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function inputHint(key: string): string | undefined {
+  if (key === "topic") return "AI";
+  if (/email/i.test(key)) return "you@gmail.com";
+  if (/chat_?id/i.test(key)) return "Numeric chat id, e.g. 123456789";
+  return undefined;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

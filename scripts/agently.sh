@@ -20,6 +20,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # ---------- config (override by exporting before you call) ----------
+env_value() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+# Every service must share one database, so fall back to .env before the default.
+export DATABASE_URL="${DATABASE_URL:-$(env_value DATABASE_URL)}"
 export DATABASE_URL="${DATABASE_URL:-postgres://agently:agently@localhost:5433/agently}"
 API_ADDR="${API_ADDR:-:8090}"                 # API on :8090 — :8080 is taken by Temporal UI
 API_PORT="${API_ADDR##*:}"
@@ -31,9 +34,7 @@ export PIECES_TASK_QUEUE="${PIECES_TASK_QUEUE:-agently-pieces}"
 # Credentials are auto-loaded from .env by the services themselves:
 # GEMINI_API_KEY, MOONSHOT_API_KEY, LANGFUSE_*, BROWSERBASE_* and SMTP_*.
 # Next.js only reads apps/web/.env, so the web's access settings come from here.
-env_value() { grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
 export AGENTLY_API_TOKEN="${AGENTLY_API_TOKEN:-$(env_value AGENTLY_API_TOKEN)}"
-export AGENTLY_WEB_PASSWORD="${AGENTLY_WEB_PASSWORD:-$(env_value AGENTLY_WEB_PASSWORD)}"
 
 API_BIN=/tmp/agently-api
 RUNDIR="$ROOT/.agently"

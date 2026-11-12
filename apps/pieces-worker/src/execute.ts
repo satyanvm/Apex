@@ -60,8 +60,15 @@ export function makeExecutePiece(registry: Registry, resolveCredential?: Credent
           return { ok: false, error: `credential ${input.credentialId} not found`, errorType: 'MissingCredential' };
         }
         auth = normalizeDbAuth(data, piece);
+        if (auth instanceof String && auth.trim() === '') {
+          return {
+            ok: false,
+            error: `credential ${input.credentialId} has an empty ${piece.auth?.displayName ?? 'secret'} — edit it and paste the value again`,
+            errorType: 'MissingCredential',
+          };
+        }
       } else if (input.authEnvKey) {
-        const raw = process.env[input.authEnvKey] ?? '';
+        const raw = (process.env[input.authEnvKey] ?? '').trim();
         if (raw) auth = normalizeAuth(raw, piece);
       }
       if (auth === undefined) {
@@ -108,7 +115,9 @@ export function normalizeDbAuth(data: Record<string, unknown>, piece: LoadedPiec
   const authType = String(piece.auth?.type ?? '').toUpperCase();
   switch (authType) {
     case 'SECRET_TEXT': {
-      const value = String(data.value ?? '');
+      // Trimmed: a token pasted with a trailing newline/space becomes part of
+      // the URL (e.g. api.telegram.org/bot<token>\n/sendMessage → 404).
+      const value = String(data.value ?? '').trim();
       // eslint-disable-next-line no-new-wrappers
       const dual = new String(value) as String & { secret_text: string; type: string };
       dual.secret_text = value;
