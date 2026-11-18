@@ -10,9 +10,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || "http://localhost:3000"),
 };
 
-// Runs before paint to apply the saved/system theme with no flash of the
-// wrong mode. Kept as a tiny string so it can be inlined in <head>.
-const themeInit = `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`;
+// Runs before paint so the page never flashes the wrong mode. Light is the
+// default; dark only when the visitor chose it with the toggle. Kept as a tiny
+// string so it can be inlined in <head>.
+const themeInit = `(function(){try{if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`;
 
 export default function RootLayout({
   children,
