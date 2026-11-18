@@ -63,7 +63,7 @@ export function WorkflowDetail({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-[640px]">
           <div className="flex items-center gap-3">
-            <h1 className="text-[22px] font-semibold tracking-tight text-fg">{wf.name}</h1>
+            <h1 className="font-display text-[30px] font-semibold leading-tight text-fg">{wf.name}</h1>
             <StatusBadge status={wf.status} />
           </div>
           <p className="mt-2 text-[14px] leading-relaxed text-muted">{wf.description}</p>

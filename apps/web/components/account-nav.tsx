@@ -40,7 +40,7 @@ export function AccountNav({ className }: { className?: string }) {
         </Link>
         <Link
           href={signInHref(back, "signup")}
-          className="flex h-8 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg transition-colors hover:bg-accent-soft"
+          className="flex h-8 items-center bg-fg px-3.5 text-[13px] font-medium text-bg transition-opacity hover:opacity-90"
         >
           Sign up
         </Link>
@@ -85,7 +85,7 @@ function AccountMenu({ user, inConsole, className }: { user: AccountUser; inCons
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${user.email}`}
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-[12px] font-semibold text-accent-fg transition-opacity hover:opacity-90"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-fg text-[12px] font-semibold text-bg transition-opacity hover:opacity-90"
       >
         {user.initials}
       </button>

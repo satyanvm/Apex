@@ -10,16 +10,21 @@ import {
   ShieldCheck,
   Workflow as WorkflowIcon,
   Eye,
-  Sparkles,
 } from "lucide-react";
 import { StatusBadge, StatusDot } from "@/components/ui/status";
 import { LivePill } from "@/components/live";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { AccountNav } from "@/components/account-nav";
+import { Wordmark } from "@/components/playground/site-nav";
+
+/* Editorial theme: mint grid canvas, navy ink, display serif headlines,
+   typewriter labels, square controls and flat colour blocks (globals.css). */
+
+const MINT_TEXT = "text-[#e2f9d0]";
 
 export default function LandingPage() {
   return (
-    <div className="relative overflow-x-clip">
+    <div className="relative overflow-x-clip bg-bg">
       <LandingNav />
       <Hero />
       <LogoCloud />
@@ -36,20 +41,15 @@ export default function LandingPage() {
 /* ----------------------------------------------------------------- Nav */
 function LandingNav() {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-bg/70 backdrop-blur-xl">
-      <div className="mx-auto flex h-15 max-w-[1180px] items-center gap-8 px-6 py-3.5">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-soft shadow-[0_4px_14px_-2px_rgba(94,79,242,0.5)]">
-            <Star className="h-4 w-4 text-white" />
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight">Apex</span>
-        </Link>
-        <nav className="hidden items-center gap-6 text-[13px] text-muted md:flex">
-          <a className="transition-colors hover:text-fg" href="#product">Product</a>
-          <a className="transition-colors hover:text-fg" href="#how">How it works</a>
-          <a className="transition-colors hover:text-fg" href="#features">Features</a>
-          <a className="transition-colors hover:text-fg" href="#">Pricing</a>
-          <a className="transition-colors hover:text-fg" href="#">Docs</a>
+    <header className="sticky top-0 z-40 border-b border-border bg-surface">
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center gap-10 px-6">
+        <Wordmark />
+        <nav className="hidden items-center gap-8 text-[15px] font-medium text-fg md:flex">
+          <a className="transition-colors hover:text-accent" href="#product">Product</a>
+          <a className="transition-colors hover:text-accent" href="#how">How it works</a>
+          <a className="transition-colors hover:text-accent" href="#features">Features</a>
+          <a className="transition-colors hover:text-accent" href="#">Pricing</a>
+          <a className="transition-colors hover:text-accent" href="#">Docs</a>
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
@@ -60,172 +60,147 @@ function LandingNav() {
   );
 }
 
-/* Scattered decorative squares floating behind the hero — grey + faint
-   lavender, varied sizes, low opacity. Purely ornamental. */
-function HeroDecor() {
-  const squares = [
-    // left cluster
-    { top: "16%", left: "5%", size: 22, tone: "grey" },
-    { top: "20%", left: "8.5%", size: 14, tone: "grey" },
-    // right side
-    { top: "24%", right: "7%", size: 26, tone: "lavender" },
-    { top: "44%", right: "4.5%", size: 16, tone: "grey" },
-    { top: "66%", right: "8%", size: 20, tone: "grey" },
-    { top: "82%", right: "5%", size: 24, tone: "lavender" },
-    // bottom-center drift
-    { top: "90%", left: "38%", size: 18, tone: "lavender" },
-    { top: "86%", left: "41%", size: 12, tone: "grey" },
-  ] as const;
-
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      {squares.map((s, i) => (
-        <span
-          key={i}
-          className={`absolute rounded-[3px] ${
-            s.tone === "lavender" ? "bg-accent/[0.12]" : "bg-fg/[0.05]"
-          }`}
-          style={{
-            top: s.top,
-            left: "left" in s ? s.left : undefined,
-            right: "right" in s ? s.right : undefined,
-            width: s.size,
-            height: s.size,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 /* ---------------------------------------------------------------- Hero */
 function Hero() {
   return (
-    <section className="relative">
-      <HeroDecor />
-      <div className="relative mx-auto max-w-[1180px] px-6 pb-10 pt-20 text-center md:pt-28">
-        <div className="animate-in mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1 text-[12px] text-muted">
-          <Sparkles className="size-3.5 text-accent-soft" />
-          The cloud for autonomous agents
-          <span className="text-ghost">·</span>
-          <span className="text-faint">v2 is live</span>
+    <section className="relative overflow-hidden border-b border-border bg-mint bg-grid dark:bg-bg">
+      {/* Stepped lighter blocks in the corners, cut from the same grid. */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <span className="absolute left-0 top-0 h-20 w-56 bg-[#d2f4bb] dark:bg-surface" />
+        <span className="absolute left-0 top-20 h-24 w-24 bg-[#d2f4bb] dark:bg-surface" />
+        <span className="absolute right-0 top-0 h-24 w-64 bg-[#d2f4bb] dark:bg-surface" />
+      </div>
+
+      <div className="relative mx-auto grid max-w-[1280px] grid-cols-1 items-center gap-14 px-6 pb-20 pt-16 md:pt-24 lg:grid-cols-[1.05fr_1fr]">
+        <div className="animate-in min-w-0">
+          <span className="eyebrow">The cloud for autonomous agents · v2 is live</span>
+
+          <h1 className="font-display mt-6 text-balance text-[44px] font-semibold leading-[0.95] text-fg sm:text-[68px] lg:text-[84px]">
+            Deploy agents that keep running after you leave.
+          </h1>
+
+          <p className="mt-7 max-w-[560px] text-[17px] leading-relaxed text-fg md:text-[18px]">
+            Apex is the execution platform for long-running, multi-agent
+            workflows. Launch a crew, close your laptop, and come back to finished
+            work — with live logs, browser activity, cost and runtime in one
+            control plane.
+          </p>
+
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/workflows/competitive-intelligence-sweep"
+              className="flex h-14 items-center justify-center gap-2 border-2 border-fg px-7 text-[17px] font-medium text-fg transition-colors hover:bg-fg hover:text-bg"
+            >
+              <Eye className="size-[18px]" />
+              See a live workflow
+            </Link>
+            <Link
+              href="/signup?next=%2Fdashboard"
+              className="group flex h-14 items-center justify-center gap-2 bg-accent px-7 text-[17px] font-medium text-accent-fg transition-colors hover:bg-accent-soft"
+            >
+              Start building
+              <ArrowRight className="size-[18px] transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+          <p className="font-typewriter mt-5 text-[12.5px] text-muted">
+            No credit card · 100 agent-hours free · SOC 2 Type II
+          </p>
         </div>
 
-        <h1 className="animate-in mx-auto max-w-[840px] text-balance text-[46px] font-bold leading-[1.02] tracking-[-0.03em] md:text-[68px]">
-          <span className="text-gradient">Deploy agents that keep</span>{" "}
-          <span className="text-gradient-accent">running after you leave.</span>
-        </h1>
+        <HeroCollage />
+      </div>
 
-        <p className="animate-in mx-auto mt-6 max-w-[600px] text-balance text-[16px] leading-relaxed text-muted md:text-[17px]">
-          Apex is the execution platform for long-running, multi-agent
-          workflows. Launch a crew, close your laptop, and come back to finished
-          work — with live logs, browser activity, cost and runtime in one
-          control plane.
-        </p>
+      {/* Cobalt grid strip along the bottom edge. */}
+      <div className="pattern-grid-cobalt pointer-events-none absolute bottom-0 left-6 h-6 w-[44%]" aria-hidden />
+    </section>
+  );
+}
 
-        <div className="animate-in mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link
-            href="/signup?next=%2Fdashboard"
-            className="group flex h-11 items-center gap-2 rounded-lg bg-accent px-5 text-[15px] font-medium text-accent-fg transition-colors hover:bg-accent-soft glow-accent"
-          >
-            Start building
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-          <Link
-            href="/workflows/competitive-intelligence-sweep"
-            className="flex h-11 items-center gap-2 rounded-lg border border-border bg-surface/60 px-5 text-[15px] font-medium text-fg transition-colors hover:border-border-strong"
-          >
-            <Eye className="size-4" />
-            See a live workflow
-          </Link>
-        </div>
-        <p className="animate-in mt-4 text-[12px] text-faint">
-          No credit card · 100 agent-hours free · SOC 2 Type II
-        </p>
+/* The product window, set into a collage of flat colour blocks. */
+function HeroCollage() {
+  return (
+    <div className="animate-in relative mx-auto w-full min-w-0 max-w-[620px] pb-10 pt-16 lg:pt-10">
+      <div className="pattern-grid-forest absolute -right-8 top-6 h-[72%] w-[62%]" aria-hidden />
+      <div
+        className="absolute -right-2 top-0 h-28 w-32 bg-lime"
+        style={{ clipPath: "polygon(30% 0, 100% 62%, 0 100%)" }}
+        aria-hidden
+      />
+      <div className="pattern-dots-pink absolute -left-8 bottom-0 h-44 w-44 rotate-45" aria-hidden />
 
+      {/* Display word on a highlight slip, with a typed tag. */}
+      <div className="absolute left-2 top-2 z-20 sm:left-10">
+        <span className="font-typewriter absolute -top-3 right-0 translate-x-1/3 bg-surface px-2 py-0.5 text-[13px] font-medium text-fg">
+          Agent crew
+        </span>
+        <span className="font-display block bg-[#ffc2e6] px-3 pb-1 text-[44px] leading-none text-pink sm:text-[56px]">
+          Durable
+        </span>
+      </div>
+
+      <div className="pattern-grid-blush relative z-10 mt-10 p-3 sm:p-4">
         <HeroPreview />
       </div>
-    </section>
+    </div>
   );
 }
 
 /* Faux product window — gives the page its "this is real" weight. */
 function HeroPreview() {
   return (
-    <div className="animate-in relative mx-auto mt-16 max-w-[1000px]">
-      <div className="absolute -inset-x-10 -top-10 bottom-0 -z-10 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(94,79,242,0.18),transparent_70%)] blur-2xl" />
-      <div className="overflow-hidden rounded-xl border border-border-strong bg-surface shadow-pop">
-        {/* window chrome */}
-        <div className="flex items-center gap-2 border-b border-border bg-surface-2/60 px-4 py-2.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/80" />
-          <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]/80" />
-          <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]/80" />
-          <div className="ml-3 flex items-center gap-1.5 rounded-md bg-surface px-2.5 py-1 text-[11px] text-faint">
-            <ShieldCheck className="size-3 text-success" />
-            agently.dev/runs/142
-          </div>
-          <div className="ml-auto"><LivePill /></div>
+    <div className="min-w-0 overflow-hidden border-2 border-fg bg-surface text-left">
+      {/* window chrome */}
+      <div className="flex items-center gap-2 border-b-2 border-fg bg-surface-2 px-3 py-2">
+        <span className="h-2.5 w-2.5 bg-accent" />
+        <span className="h-2.5 w-2.5 bg-lime" />
+        <span className="h-2.5 w-2.5 bg-pink" />
+        <div className="font-typewriter ml-2 flex items-center gap-1.5 bg-surface px-2 py-0.5 text-[11px] text-muted">
+          <ShieldCheck className="size-3 text-success" />
+          apex/runs/142
         </div>
-        {/* body */}
-        <div className="grid grid-cols-12 gap-px bg-border text-left">
-          {/* mini sidebar */}
-          <div className="col-span-3 hidden flex-col gap-1 bg-surface p-3 md:flex">
-            {["Dashboard", "Workflows", "Runs", "Agents", "Browser"].map((l, i) => (
-              <div
-                key={l}
-                className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] ${
-                  i === 2 ? "bg-surface-2 text-fg" : "text-faint"
-                }`}
-              >
-                <span className={`h-2 w-2 rounded-sm ${i === 2 ? "bg-accent" : "bg-ghost"}`} />
-                {l}
-              </div>
-            ))}
+        <div className="ml-auto"><LivePill /></div>
+      </div>
+      <div className="p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold">Competitive Intelligence Sweep</div>
+            <div className="font-typewriter text-[11px] text-faint">Run #142 · 7 agents · us-east-1</div>
           </div>
-          {/* main */}
-          <div className="col-span-12 bg-surface p-4 md:col-span-9">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <div className="text-[13px] font-semibold">Competitive Intelligence Sweep</div>
-                <div className="text-[11px] text-faint">Run #142 · 7 agents · us-east-1</div>
+          <StatusBadge status="running" />
+        </div>
+        {/* agent rail */}
+        <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { n: "Conductor", s: "running" as const },
+            { n: "Scout · Pricing", s: "succeeded" as const },
+            { n: "Navigator", s: "running" as const },
+            { n: "Synthesizer", s: "waiting" as const },
+          ].map((a) => (
+            <div key={a.n} className="border border-border-strong bg-surface p-2">
+              <div className="mb-2 flex items-center justify-between gap-1">
+                <span className="truncate text-[11px] font-medium">{a.n}</span>
+                <StatusDot status={a.s} />
               </div>
-              <StatusBadge status="running" />
-            </div>
-            {/* agent rail */}
-            <div className="mb-3 grid grid-cols-4 gap-2">
-              {[
-                { n: "Conductor", s: "running" as const },
-                { n: "Scout · Pricing", s: "succeeded" as const },
-                { n: "Navigator", s: "running" as const },
-                { n: "Synthesizer", s: "waiting" as const },
-              ].map((a) => (
-                <div key={a.n} className="rounded-lg border border-border bg-surface-2/50 p-2.5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="truncate text-[11px] font-medium">{a.n}</span>
-                    <StatusDot status={a.s} />
-                  </div>
-                  <div className="h-1 w-full overflow-hidden rounded-full bg-surface-3">
-                    <div
-                      className="h-full rounded-full bg-accent"
-                      style={{ width: a.s === "succeeded" ? "100%" : a.s === "waiting" ? "12%" : "64%" }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* faux log */}
-            <div className="rounded-lg border border-border bg-inset p-3 font-mono text-[10.5px] leading-relaxed">
-              <LogRow t="17:09:12" c="text-faint" s="system" m="Sandbox ready · 4 vCPU / 8 GiB" />
-              <LogRow t="17:09:52" c="text-blue-600" s="Conductor" m="→ delegated 3 scouts" />
-              <LogRow t="17:11:31" c="text-emerald-600" s="Navigator" m="screenshot captured · acme-pricing.png" />
-              <LogRow t="17:14:30" c="text-success" s="Scout·Pricing" m="completed · 11/11 rows" />
-              <LogRow t="17:18:10" c="text-warn" s="Synthesizer" m="price conflict flagged for audit" />
-              <div className="flex gap-2 text-fg">
-                <span className="text-ghost">17:31:11</span>
-                <span className="text-accent">Composer</span>
-                <span>drafting executive brief<span className="caret text-accent">▍</span></span>
+              <div className="h-1.5 w-full bg-surface-3">
+                <div
+                  className="h-full bg-accent"
+                  style={{ width: a.s === "succeeded" ? "100%" : a.s === "waiting" ? "12%" : "64%" }}
+                />
               </div>
             </div>
+          ))}
+        </div>
+        {/* faux log */}
+        <div className="border border-border-strong bg-inset p-3 font-mono text-[10.5px] leading-relaxed">
+          <LogRow t="17:09:12" c="text-faint" s="system" m="Sandbox ready · 4 vCPU / 8 GiB" />
+          <LogRow t="17:09:52" c="text-blue-600" s="Conductor" m="→ delegated 3 scouts" />
+          <LogRow t="17:11:31" c="text-emerald-600" s="Navigator" m="screenshot captured · acme-pricing.png" />
+          <LogRow t="17:14:30" c="text-success" s="Scout·Pricing" m="completed · 11/11 rows" />
+          <LogRow t="17:18:10" c="text-warn" s="Synthesizer" m="price conflict flagged for audit" />
+          <div className="flex min-w-0 gap-2 text-fg">
+            <span className="text-ghost">17:31:11</span>
+            <span className="text-accent">Composer</span>
+            <span>drafting executive brief<span className="caret text-accent">▍</span></span>
           </div>
         </div>
       </div>
@@ -235,10 +210,10 @@ function HeroPreview() {
 
 function LogRow({ t, c, s, m }: { t: string; c: string; s: string; m: string }) {
   return (
-    <div className="flex gap-2">
-      <span className="text-ghost">{t}</span>
-      <span className={c}>{s}</span>
-      <span className="text-muted">{m}</span>
+    <div className="flex min-w-0 gap-2">
+      <span className="shrink-0 text-ghost">{t}</span>
+      <span className={`shrink-0 ${c}`}>{s}</span>
+      <span className="min-w-0 truncate text-muted">{m}</span>
     </div>
   );
 }
@@ -246,14 +221,12 @@ function LogRow({ t, c, s, m }: { t: string; c: string; s: string; m: string }) 
 /* ------------------------------------------------------------ Logo cloud */
 function LogoCloud() {
   return (
-    <section className="border-y border-border/50 bg-surface/20 py-10">
-      <div className="mx-auto max-w-[1180px] px-6">
-        <p className="mb-7 text-center text-[12px] font-medium uppercase tracking-wider text-faint">
-          Trusted to run autonomous work at
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-6 opacity-70">
+    <section className="border-b border-border bg-surface py-12">
+      <div className="mx-auto max-w-[1280px] px-6 text-center">
+        <p className="font-typewriter mb-7 text-[13px] text-muted">Trusted to run autonomous work at</p>
+        <div className="flex flex-wrap items-center justify-center gap-x-14 gap-y-6">
           {["Northwind", "Helix", "Quanta", "Vantage", "Orbital", "Meridian"].map((b) => (
-            <span key={b} className="text-[18px] font-semibold tracking-tight text-muted">
+            <span key={b} className="font-display text-[26px] font-semibold text-fg/70">
               {b}
             </span>
           ))}
@@ -266,30 +239,28 @@ function LogoCloud() {
 /* -------------------------------------------------------------- Problem */
 function Problem() {
   return (
-    <section id="product" className="mx-auto max-w-[1180px] px-6 py-24">
-      <div className="grid items-center gap-12 md:grid-cols-2">
+    <section id="product" className="mx-auto max-w-[1280px] px-6 py-24">
+      <div className="grid items-center gap-14 md:grid-cols-2">
         <div>
-          <span className="text-[12px] font-semibold uppercase tracking-wider text-accent-soft">
-            The problem
-          </span>
-          <h2 className="mt-3 text-balance text-[32px] font-semibold leading-tight tracking-tight md:text-[38px]">
+          <span className="eyebrow">The problem</span>
+          <h2 className="font-display mt-5 text-balance text-[40px] font-semibold leading-[1] md:text-[56px]">
             Agents are powerful. The place they run is not.
           </h2>
-          <p className="mt-5 text-[15px] leading-relaxed text-muted">
+          <p className="mt-6 text-[16px] leading-relaxed text-muted">
             Today, autonomous agents live inside a notebook, a terminal tab, or a
             script on your laptop. The moment you disconnect, they die. There&apos;s
             no durable execution, no visibility into what a 7-agent crew is doing,
             no record of which browser it drove or what it spent.
           </p>
-          <ul className="mt-6 space-y-3">
+          <ul className="mt-7 space-y-3">
             {[
               "Long jobs stop the second the tab closes",
               "No way to watch a multi-agent crew coordinate",
               "Browser steps fail silently, with no replay",
               "Cost and runtime are a mystery until the bill arrives",
             ].map((t) => (
-              <li key={t} className="flex items-start gap-2.5 text-[14px] text-muted">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger" />
+              <li key={t} className="flex items-start gap-3 text-[15px] text-fg">
+                <span className="mt-2 h-2 w-2 shrink-0 bg-accent" />
                 {t}
               </li>
             ))}
@@ -297,10 +268,10 @@ function Problem() {
         </div>
 
         <div className="relative">
-          <div className="rounded-xl border border-border bg-surface p-6 shadow-card">
+          <div className="border-2 border-fg bg-surface p-6">
             <div className="mb-4 flex items-center justify-between">
-              <span className="text-[13px] font-medium text-muted">Without a platform</span>
-              <span className="rounded bg-danger-bg px-2 py-0.5 text-[11px] text-danger">disconnected</span>
+              <span className="font-typewriter text-[13px] text-muted">Without a platform</span>
+              <span className="bg-danger-bg px-2 py-0.5 text-[11px] text-danger">disconnected</span>
             </div>
             <div className="space-y-2 font-mono text-[12px]">
               <div className="text-faint">$ python run_agents.py</div>
@@ -310,16 +281,16 @@ function Problem() {
               <div className="text-ghost">work lost · no logs · no artifacts</div>
             </div>
           </div>
-          <div className="mt-4 rounded-xl border border-accent/30 bg-accent-bg/40 p-6 ring-1 ring-accent/20">
+          <div className="pattern-grid-forest mt-5 border-2 border-fg p-6 shadow-pop">
             <div className="mb-4 flex items-center justify-between">
-              <span className="text-[13px] font-medium text-fg">With Apex</span>
-              <LivePill label="still running" />
+              <span className={`font-typewriter text-[13px] ${MINT_TEXT}`}>With Apex</span>
+              <span className="bg-lime px-2 py-0.5 text-[11px] font-medium text-navy">still running</span>
             </div>
             <div className="space-y-2 font-mono text-[12px]">
-              <div className="text-faint">$ agently deploy ./crew</div>
-              <div className="text-success">✓ Crew running in us-east-1 · detached</div>
-              <div className="text-muted">7 agents · live logs · browser capture</div>
-              <div className="text-accent-soft">→ notified when complete</div>
+              <div className="text-[#e2f9d0]/60">$ apex deploy ./crew</div>
+              <div className="text-lime">✓ Crew running in us-east-1 · detached</div>
+              <div className={MINT_TEXT}>7 agents · live logs · browser capture</div>
+              <div className="text-[#ffb3e6]">→ notified when complete</div>
             </div>
           </div>
         </div>
@@ -353,32 +324,25 @@ function HowItWorks() {
     },
   ];
   return (
-    <section id="how" className="border-y border-border/50 bg-surface/20 py-24">
-      <div className="mx-auto max-w-[1180px] px-6">
-        <div className="mb-14 text-center">
-          <span className="text-[12px] font-semibold uppercase tracking-wider text-accent-soft">
-            How it works
-          </span>
-          <h2 className="mt-3 text-[32px] font-semibold tracking-tight md:text-[38px]">
+    <section id="how" className="bg-navy py-24">
+      <div className="mx-auto max-w-[1280px] px-6">
+        <div className="mb-14">
+          <span className="eyebrow">How it works</span>
+          <h2 className={`font-display mt-5 max-w-[760px] text-balance text-[40px] font-semibold leading-[1] md:text-[56px] ${MINT_TEXT}`}>
             From prompt to finished work, durably.
           </h2>
         </div>
-        <div className="grid gap-5 md:grid-cols-4">
+        <div className="grid gap-px bg-[#e2f9d0]/20 md:grid-cols-4">
           {steps.map((s, i) => {
             const Icon = s.icon;
             return (
-              <div
-                key={s.title}
-                className="relative rounded-xl border border-border bg-surface p-5 shadow-card"
-              >
-                <span className="absolute right-4 top-4 font-mono text-[12px] text-ghost">
-                  0{i + 1}
+              <div key={s.title} className="relative bg-navy p-6">
+                <span className="font-typewriter absolute right-5 top-5 text-[13px] text-lime">0{i + 1}</span>
+                <span className="mb-5 flex h-11 w-11 items-center justify-center bg-lime">
+                  <Icon className="size-5 text-navy" />
                 </span>
-                <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-accent-bg ring-1 ring-accent/25">
-                  <Icon className="size-5 text-accent-soft" />
-                </span>
-                <h3 className="text-[15px] font-semibold tracking-tight">{s.title}</h3>
-                <p className="mt-2 text-[13px] leading-relaxed text-muted">{s.body}</p>
+                <h3 className={`font-display text-[22px] font-semibold leading-tight ${MINT_TEXT}`}>{s.title}</h3>
+                <p className="mt-3 text-[14px] leading-relaxed text-[#e2f9d0]/75">{s.body}</p>
               </div>
             );
           })}
@@ -399,33 +363,33 @@ function Features() {
     { icon: Bell, title: "Notifications", body: "Completed, failed, browser errors, cost thresholds — delivered to Slack, email, or webhook." },
   ];
   return (
-    <section id="features" className="mx-auto max-w-[1180px] px-6 py-24">
-      <div className="mb-14 max-w-[640px]">
-        <span className="text-[12px] font-semibold uppercase tracking-wider text-accent-soft">
-          The control plane
-        </span>
-        <h2 className="mt-3 text-balance text-[32px] font-semibold tracking-tight md:text-[38px]">
-          Everything you need to run agents in production.
-        </h2>
-        <p className="mt-4 text-[15px] leading-relaxed text-muted">
-          One console for launching, observing, and debugging autonomous work —
-          built for the density of real operations and the polish of a tool you
-          live in all day.
-        </p>
-      </div>
-      <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-3">
-        {features.map((f) => {
-          const Icon = f.icon;
-          return (
-            <div key={f.title} className="group bg-surface p-6 transition-colors hover:bg-surface-2">
-              <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-surface-2 ring-1 ring-border transition-colors group-hover:bg-accent-bg group-hover:ring-accent/25">
-                <Icon className="size-5 text-muted transition-colors group-hover:text-accent-soft" />
-              </span>
-              <h3 className="text-[15px] font-semibold tracking-tight">{f.title}</h3>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted">{f.body}</p>
-            </div>
-          );
-        })}
+    <section id="features" className="bg-surface">
+      <div className="mx-auto max-w-[1280px] px-6 py-24">
+        <div className="mb-14 max-w-[720px]">
+          <span className="eyebrow border border-border-strong">The control plane</span>
+          <h2 className="font-display mt-5 text-balance text-[40px] font-semibold leading-[1] md:text-[56px]">
+            Everything you need to run agents in production.
+          </h2>
+          <p className="mt-5 text-[16px] leading-relaxed text-muted">
+            One console for launching, observing, and debugging autonomous work —
+            built for the density of real operations and the polish of a tool you
+            live in all day.
+          </p>
+        </div>
+        <div className="grid gap-px border-2 border-fg bg-fg md:grid-cols-3">
+          {features.map((f) => {
+            const Icon = f.icon;
+            return (
+              <div key={f.title} className="group bg-surface p-7 transition-colors hover:bg-mint dark:hover:bg-surface-2">
+                <span className="mb-5 flex h-11 w-11 items-center justify-center border-2 border-fg bg-surface transition-colors group-hover:bg-accent group-hover:border-accent">
+                  <Icon className="size-5 text-fg transition-colors group-hover:text-accent-fg" />
+                </span>
+                <h3 className="font-display text-[22px] font-semibold leading-tight">{f.title}</h3>
+                <p className="mt-2.5 text-[14px] leading-relaxed text-muted">{f.body}</p>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -440,12 +404,12 @@ function Metrics() {
     { v: "14", l: "regions worldwide" },
   ];
   return (
-    <section className="border-y border-border/50 bg-surface/20 py-16">
-      <div className="mx-auto grid max-w-[1180px] grid-cols-2 gap-8 px-6 md:grid-cols-4">
+    <section className="pattern-grid-forest py-20">
+      <div className="mx-auto grid max-w-[1280px] grid-cols-2 gap-10 px-6 md:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.l} className="text-center">
-            <div className="text-[34px] font-semibold tracking-tight text-gradient">{s.v}</div>
-            <div className="mt-1 text-[13px] text-muted">{s.l}</div>
+          <div key={s.l}>
+            <div className="font-display text-[48px] font-semibold leading-none text-lime md:text-[60px]">{s.v}</div>
+            <div className={`font-typewriter mt-3 text-[13px] ${MINT_TEXT}`}>{s.l}</div>
           </div>
         ))}
       </div>
@@ -456,29 +420,28 @@ function Metrics() {
 /* ------------------------------------------------------------------ CTA */
 function CTA() {
   return (
-    <section className="mx-auto max-w-[1180px] px-6 py-28">
-      <div className="relative overflow-hidden rounded-2xl border border-border-strong bg-surface px-8 py-16 text-center shadow-pop">
-        <div className="bg-dots pointer-events-none absolute inset-0 opacity-40 [mask-image:radial-gradient(ellipse_50%_60%_at_50%_50%,black,transparent)]" />
-        <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[480px] -translate-x-1/2 rounded-full bg-accent/25 blur-3xl" />
-        <div className="relative">
-          <h2 className="mx-auto max-w-[560px] text-balance text-[34px] font-semibold leading-tight tracking-tight md:text-[42px]">
+    <section className="bg-mint bg-grid dark:bg-bg">
+      <div className="mx-auto max-w-[1280px] px-6 py-28">
+        <div className="pattern-grid-blush relative border-2 border-fg px-8 py-16 shadow-pop md:px-16">
+          <div className="pattern-dots-pink absolute -right-6 -top-6 hidden h-20 w-20 rotate-45 md:block" aria-hidden />
+          <h2 className="font-display max-w-[720px] text-balance text-[40px] font-semibold leading-[1] text-navy md:text-[60px]">
             Give your agents a place to live.
           </h2>
-          <p className="mx-auto mt-4 max-w-[480px] text-[15px] text-muted">
+          <p className="mt-5 max-w-[520px] text-[17px] text-navy">
             Deploy your first autonomous workflow in minutes. Watch it run long
             after you&apos;ve logged off.
           </p>
-          <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link
               href="/signup?next=%2Fdashboard"
-              className="group flex h-11 items-center gap-2 rounded-lg bg-accent px-6 text-[15px] font-medium text-accent-fg transition-colors hover:bg-accent-soft glow-accent"
+              className="group flex h-14 items-center justify-center gap-2 bg-accent px-7 text-[17px] font-medium text-accent-fg transition-colors hover:bg-accent-soft"
             >
               Open the console
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+              <ArrowRight className="size-[18px] transition-transform group-hover:translate-x-0.5" />
             </Link>
             <Link
               href="#"
-              className="flex h-11 items-center rounded-lg border border-border bg-surface/60 px-6 text-[15px] font-medium text-fg transition-colors hover:border-border-strong"
+              className="flex h-14 items-center justify-center border-2 border-navy px-7 text-[17px] font-medium text-navy transition-colors hover:bg-navy hover:text-[#e2f9d0]"
             >
               Talk to sales
             </Link>
@@ -497,54 +460,37 @@ function Footer() {
     { h: "Company", links: ["About", "Careers", "Blog", "Security"] },
   ];
   return (
-    <footer className="border-t border-border bg-surface/20">
-      <div className="mx-auto grid max-w-[1180px] gap-10 px-6 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+    <footer className="bg-navy">
+      <div className="mx-auto grid max-w-[1280px] gap-10 px-6 py-16 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-soft">
-              <Star className="h-4 w-4 text-white" />
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight">Apex</span>
-          </div>
-          <p className="mt-4 max-w-[260px] text-[13px] leading-relaxed text-faint">
+          <span className={`font-display text-[34px] font-semibold ${MINT_TEXT}`}>Apex</span>
+          <p className="mt-3 max-w-[280px] text-[14px] leading-relaxed text-[#e2f9d0]/70">
             The execution platform for long-running, autonomous AI agents.
           </p>
         </div>
         {cols.map((c) => (
           <div key={c.h}>
-            <h4 className="mb-3 text-[12px] font-semibold uppercase tracking-wider text-faint">{c.h}</h4>
+            <h4 className="font-typewriter mb-4 text-[13px] text-lime">{c.h}</h4>
             <ul className="space-y-2.5">
               {c.links.map((l) => (
                 <li key={l}>
-                  <a href="#" className="text-[13px] text-muted transition-colors hover:text-fg">{l}</a>
+                  <a href="#" className="text-[14px] text-[#e2f9d0]/80 transition-colors hover:text-[#e2f9d0]">{l}</a>
                 </li>
               ))}
             </ul>
           </div>
         ))}
       </div>
-      <div className="border-t border-border">
-        <div className="mx-auto flex max-w-[1180px] flex-col items-center justify-between gap-3 px-6 py-5 text-[12px] text-faint sm:flex-row">
-          <span>© 2026 Apex. All rights reserved.</span>
+      <div className="border-t border-[#e2f9d0]/15">
+        <div className="mx-auto flex max-w-[1280px] flex-col items-center justify-between gap-3 px-6 py-5 text-[12px] text-[#e2f9d0]/60 sm:flex-row">
+          <span className="font-typewriter">© 2026 Apex. All rights reserved.</span>
           <div className="flex items-center gap-5">
-            <a href="#" className="transition-colors hover:text-muted">Privacy</a>
-            <a href="#" className="transition-colors hover:text-muted">Terms</a>
-            <a href="#" className="transition-colors hover:text-muted">SOC 2</a>
+            <a href="#" className="transition-colors hover:text-[#e2f9d0]">Privacy</a>
+            <a href="#" className="transition-colors hover:text-[#e2f9d0]">Terms</a>
+            <a href="#" className="transition-colors hover:text-[#e2f9d0]">SOC 2</a>
           </div>
         </div>
       </div>
     </footer>
-  );
-}
-
-function Star({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path
-        d="M12 3l2.4 5.1L20 9.3l-4 4 1 5.7-5-2.8-5 2.8 1-5.7-4-4 5.6-1.2L12 3z"
-        fill="currentColor"
-        opacity="0.92"
-      />
-    </svg>
   );
 }

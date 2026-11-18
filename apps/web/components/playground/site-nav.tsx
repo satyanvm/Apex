@@ -6,12 +6,12 @@ export const REPO_URL = "https://github.com/satyanvm/Apex";
 
 export function Wordmark() {
   return (
-    <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-fg">
+    <Link href="/" className="font-display flex items-center gap-2 text-[24px] font-semibold leading-none text-fg">
       <svg viewBox="0 0 24 24" className="size-5" aria-hidden>
-        <circle cx="5" cy="6" r="2.6" fill="var(--color-accent)" />
-        <circle cx="5" cy="18" r="2.6" fill="var(--color-accent-soft)" />
-        <circle cx="19" cy="12" r="2.6" fill="var(--color-accent)" />
-        <path d="M7.5 6.8 16.6 11M7.5 17.2l9.1-4.2" stroke="var(--color-accent-soft)" strokeWidth="1.6" fill="none" />
+        <circle cx="5" cy="6" r="2.6" fill="var(--color-fg)" />
+        <circle cx="5" cy="18" r="2.6" fill="var(--color-fg)" />
+        <circle cx="19" cy="12" r="2.8" fill="var(--color-accent)" />
+        <path d="M7.5 6.8 16.6 11M7.5 17.2l9.1-4.2" stroke="var(--color-fg)" strokeWidth="1.6" fill="none" />
       </svg>
       Apex
     </Link>
@@ -20,7 +20,7 @@ export function Wordmark() {
 
 export function SiteNav({ cta = true, account = true }: { cta?: boolean; account?: boolean }) {
   return (
-    <header className="border-b border-border bg-bg">
+    <header className="border-b border-border bg-surface">
       <div className="flex h-14 items-center gap-4 px-4 sm:gap-6 sm:px-5">
         <Wordmark />
         <nav className="ml-auto flex items-center gap-1 text-[13px] sm:gap-3">

@@ -76,7 +76,7 @@ export default function BrowserSessionPage() {
       />
       <PageContainer>
         <div className="mb-5">
-          <h1 className="text-[20px] font-semibold tracking-tight text-fg">{session.pageTitle || "Browser session"}</h1>
+          <h1 className="font-display text-[26px] font-semibold leading-tight text-fg">{session.pageTitle || "Browser session"}</h1>
           <p className="mt-1 font-mono text-[12px] text-muted">{session.currentUrl}</p>
         </div>
         <BrowserSessionView session={session} />

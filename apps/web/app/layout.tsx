@@ -2,6 +2,12 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { Fraunces, IBM_Plex_Mono } from "next/font/google";
+
+// Display serif for headlines and a typewriter mono for labels (globals.css
+// --font-display / --font-typewriter).
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", axes: ["opsz"], display: "swap" });
+const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-plex-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Apex: prompts in, durable workflows out",
@@ -23,7 +29,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${fraunces.variable} ${plexMono.variable}`}
       suppressHydrationWarning
     >
       <head>

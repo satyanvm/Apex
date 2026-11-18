@@ -53,7 +53,7 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
 
   return (
     <div className="mx-auto w-full max-w-[380px] px-4 py-14 sm:py-20">
-      <h1 className="text-[22px] font-semibold tracking-tight text-fg">
+      <h1 className="font-display text-[36px] font-semibold leading-[1.05] text-fg">
         {signup ? "Create your account" : "Sign in to Apex"}
       </h1>
       <p className="mt-1.5 text-[13px] text-muted">
