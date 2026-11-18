@@ -13,6 +13,8 @@ import {
   type CredentialSummary,
 } from "@/lib/credentials";
 import { credentialTypeDef, type CredentialTypeDef } from "./credential-types";
+import { fetchOAuthTypes, TELEGRAM_TYPES } from "@/lib/connect";
+import { OAuthConnect, TelegramConnect } from "./quick-connect";
 import { useCredentials } from "./credentials-context";
 import { DynamicField } from "./dynamic-field";
 import type { NodeField } from "./node-catalog";
@@ -197,6 +199,29 @@ export function CredentialModal({
   const isEdit = Boolean(existing);
   const fields = typeDef.fields;
 
+  // New credentials connect in one click where possible (OAuth sign-in popup,
+  // Telegram deep link), with the typed form one link away.
+  const telegram = TELEGRAM_TYPES.has(typeDef.id);
+  const [quick, setQuick] = React.useState<"oauth" | "telegram" | null>(
+    !isEdit && telegram ? "telegram" : null,
+  );
+  const [manual, setManual] = React.useState(isEdit);
+  const [checking, setChecking] = React.useState(!isEdit && !telegram);
+  React.useEffect(() => {
+    if (isEdit || telegram) return;
+    let active = true;
+    fetchOAuthTypes().then((types) => {
+      if (!active) return;
+      if (types.has(typeDef.id)) setQuick("oauth");
+      else setManual(true);
+      setChecking(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isEdit, telegram, typeDef.id]);
+  const showForm = manual && !checking;
+
   const filled = (v: unknown) => v !== undefined && v !== null && v !== "";
   const canSave =
     name.trim() !== "" &&
@@ -213,7 +238,7 @@ export function CredentialModal({
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
     e?.stopPropagation();
-    if (busy || !canSave) return;
+    if (busy || !canSave || !showForm) return;
     setBusy(true);
     setApiError(null);
     try {
@@ -253,33 +278,68 @@ export function CredentialModal({
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()} className="max-w-[440px]">
       <DialogHeader
-        title={isEdit ? `Edit ${typeDef.label} credential` : `Create ${typeDef.label} credential`}
+        title={isEdit ? `Edit ${typeDef.label} credential` : `Connect ${typeDef.label}`}
         subtitle={
           isEdit
             ? "Saved values stay hidden — retype a field to replace it."
-            : "Stored securely; values are never shown again after saving."
+            : showForm
+              ? "Stored securely; values are never shown again after saving."
+              : "Connect your account in a few clicks."
         }
         onClose={onClose}
       />
 
       <form onSubmit={handleSave}>
       <div className="max-h-[55vh] overflow-y-auto px-5 py-4 space-y-4">
-        <div>
-          <label className="block text-[12px] font-medium text-fg mb-1.5">
-            Name
-            <span className="text-danger ml-0.5" aria-hidden>
-              *
-            </span>
-          </label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={`${typeDef.label} account`}
-            className="text-[13px]"
-          />
-        </div>
+        {checking && <div className="text-[12px] text-faint">Loading…</div>}
 
-        {fields.map((f) => (
+        {quick && !manual && (
+          <>
+            {quick === "oauth" ? (
+              <OAuthConnect typeDef={typeDef} name="" onConnected={onSaved} />
+            ) : (
+              <TelegramConnect typeDef={typeDef} name="" onConnected={onSaved} />
+            )}
+            {fields.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setManual(true)}
+                className="text-[12px] text-faint underline-offset-2 hover:text-fg hover:underline"
+              >
+                Paste {quick === "oauth" ? "an access token" : "a bot token"} manually instead
+              </button>
+            )}
+          </>
+        )}
+
+        {showForm && quick && (
+          <button
+            type="button"
+            onClick={() => setManual(false)}
+            className="text-[12px] text-accent underline-offset-2 hover:underline"
+          >
+            ← Back to one-click connect
+          </button>
+        )}
+
+        {showForm && (
+          <div>
+            <label className="block text-[12px] font-medium text-fg mb-1.5">
+              Name
+              <span className="text-danger ml-0.5" aria-hidden>
+                *
+              </span>
+            </label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`${typeDef.label} account`}
+              className="text-[13px]"
+            />
+          </div>
+        )}
+
+        {showForm && fields.map((f) => (
           <DynamicField
             key={f.key}
             field={f}
@@ -289,7 +349,7 @@ export function CredentialModal({
           />
         ))}
 
-        {fields.length === 0 && (
+        {showForm && fields.length === 0 && (
           <p className="text-[11px] text-faint">
             No field definitions are available for this credential type yet — the
             catalog may still be regenerating.
@@ -312,9 +372,11 @@ export function CredentialModal({
           <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" size="sm" disabled={busy || !canSave}>
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create"}
-          </Button>
+          {showForm && (
+            <Button type="submit" variant="primary" size="sm" disabled={busy || !canSave}>
+              {busy ? "Saving…" : isEdit ? "Save changes" : "Create"}
+            </Button>
+          )}
         </div>
       </div>
       </form>

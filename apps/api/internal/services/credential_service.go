@@ -108,6 +108,63 @@ func (s *CredentialService) Create(owner *domain.MemberId, name, typ string, val
 	if err := validateCredentialType(typ, values, true); err != nil {
 		return CredentialSummary{}, err
 	}
+	if err := rejectPlatformValues(values); err != nil {
+		return CredentialSummary{}, err
+	}
+	return s.insert(owner, name, typ, values), nil
+}
+
+// CreateConnected saves a credential that a connect flow (OAuth, Telegram)
+// produced rather than one the user typed, so it may hold platform markers.
+func (s *CredentialService) CreateConnected(owner *domain.MemberId, name, typ string, values map[string]any) (CredentialSummary, error) {
+	if err := validateCredentialType(typ, values, false); err != nil {
+		return CredentialSummary{}, err
+	}
+	return s.insert(owner, name, typ, values), nil
+}
+
+// Data returns the stored values of owner's credential. For the API's own
+// connect flows only; HTTP responses never carry them.
+func (s *CredentialService) Data(owner *domain.MemberId, id domain.CredentialId) (string, map[string]any, error) {
+	c, err := s.owned(id, owner)
+	if err != nil {
+		return "", nil, err
+	}
+	return c.Type, c.Data, nil
+}
+
+// TypeLabel is a credential type's display name ("Gmail"), or its id.
+func TypeLabel(typ string) string {
+	types, _ := credentialTypes()
+	if def, ok := types[typ]; ok && def.Label != "" {
+		return def.Label
+	}
+	return typ
+}
+
+// TypeAuth is a credential type's pieces auth kind (oauth2, secret_text, …),
+// "" for catalog types or unknown ids.
+func TypeAuth(typ string) string {
+	types, _ := credentialTypes()
+	return types[typ].AuthType
+}
+
+// PlatformValuePrefix marks a credential value the runtime fills in from the
+// server's own configuration ("$platform:telegram" → TELEGRAM_BOT_TOKEN). Only
+// connect flows write it; typed values may not, or anyone could borrow the
+// server's bot.
+const PlatformValuePrefix = "$platform:"
+
+func rejectPlatformValues(values map[string]any) error {
+	for k, v := range values {
+		if sv, ok := v.(string); ok && strings.HasPrefix(strings.TrimSpace(sv), PlatformValuePrefix) {
+			return domain.BadRequest("credential field " + k + " has a reserved value")
+		}
+	}
+	return nil
+}
+
+func (s *CredentialService) insert(owner *domain.MemberId, name, typ string, values map[string]any) CredentialSummary {
 	now := domain.Timestamp(s.deps.Clock.ISO())
 	c := domain.Credential{
 		ID:          domain.NewCredentialId(),
@@ -119,7 +176,7 @@ func (s *CredentialService) Create(owner *domain.MemberId, name, typ string, val
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	return summarize(s.deps.Repos.Credentials.Insert(c)), nil
+	return summarize(s.deps.Repos.Credentials.Insert(c))
 }
 
 // Update renames and/or merges secret values PER-KEY: keys absent from values
@@ -127,6 +184,9 @@ func (s *CredentialService) Create(owner *domain.MemberId, name, typ string, val
 func (s *CredentialService) Update(owner *domain.MemberId, id domain.CredentialId, name *string, values map[string]any) (CredentialSummary, error) {
 	existing, err := s.owned(id, owner)
 	if err != nil {
+		return CredentialSummary{}, err
+	}
+	if err := rejectPlatformValues(values); err != nil {
 		return CredentialSummary{}, err
 	}
 	now := domain.Timestamp(s.deps.Clock.ISO())

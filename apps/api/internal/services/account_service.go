@@ -93,6 +93,9 @@ func (s *AccountService) SignIn(email, password string) (domain.Member, string, 
 	if !ok {
 		hash = dummyHash()
 	}
+	if ok && hash == "" {
+		return domain.Member{}, "", domain.Unauthorized("This account signs in with Google. Use Continue with Google.")
+	}
 	if !checkPassword(hash, password) || !ok {
 		return domain.Member{}, "", domain.Unauthorized("Wrong email or password.")
 	}

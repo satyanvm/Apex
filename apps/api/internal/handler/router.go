@@ -27,6 +27,9 @@ func NewRouter(p *services.Platform) chi.Router {
 		r.Post("/auth/signin", auth.signIn)
 		r.Post("/auth/signout", auth.signOut)
 		r.Get("/auth/me", auth.me)
+		r.Get("/auth/providers", authProviders(p))
+		r.Get("/auth/google/start", auth.googleStart)
+		r.Get("/auth/google/callback", auth.googleCallback)
 
 		// Anonymous playground: streams a compile, never saves or runs anything.
 		r.Post("/public/compile", newPublicCompiler().handler())
@@ -81,6 +84,15 @@ func NewRouter(p *services.Platform) chi.Router {
 
 		// Dynamic-prop options for pieces.* nodes (proxied to the pieces worker).
 		r.Post("/pieces/options", piecesOptions(p))
+
+		// One-click account connections: OAuth2 popups and Telegram deep links.
+		r.Get("/oauth/apps", oauthApps(p))
+		r.Get("/oauth/callback", oauthCallback(p))
+		r.Get("/oauth/{type}/start", oauthStart(p))
+		r.Get("/connect/telegram", telegramInfo(p))
+		r.Post("/connect/telegram/start", telegramStart(p))
+		r.Get("/connect/telegram/status", telegramStatus(p))
+		r.Get("/connect/telegram/chats", telegramChats(p))
 
 		r.Get("/integrations", listIntegrations(p))
 		r.Get("/integrations/google/connect", connectGoogle(p))

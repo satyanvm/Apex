@@ -85,6 +85,20 @@ func (r *accountRepo) DeleteSession(tokenHash string) {
 	delete(r.s.authSessions, tokenHash)
 }
 
+func (r *accountRepo) ClaimVerified(id domain.MemberId) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if _, ok := r.s.accounts[id]; ok {
+		r.s.accounts[id] = ""
+	}
+	for k, sess := range r.s.authSessions {
+		if sess.member == id {
+			delete(r.s.authSessions, k)
+		}
+	}
+	return nil
+}
+
 /* ------------------------------- Postgres ------------------------------ */
 
 type pgAccountRepo struct{ s *pgStore }
@@ -185,6 +199,27 @@ func (r *pgAccountRepo) SessionMember(tokenHash string, now time.Time) (domain.M
 func (r *pgAccountRepo) DeleteSession(tokenHash string) {
 	_, err := r.s.pool.Exec(bg(), `delete from auth_sessions where token_hash=$1`, tokenHash)
 	r.s.fail("account.DeleteSession", err)
+}
+
+func (r *pgAccountRepo) ClaimVerified(id domain.MemberId) error {
+	ctx := bg()
+	tx, err := r.s.pool.Begin(ctx)
+	if err != nil {
+		r.s.fail("account.ClaimVerified begin", err)
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `update accounts set password_hash='' where member_id=$1`, string(id)); err != nil {
+		r.s.fail("account.ClaimVerified password", err)
+		return err
+	}
+	if _, err := tx.Exec(ctx, `delete from auth_sessions where member_id=$1`, string(id)); err != nil {
+		r.s.fail("account.ClaimVerified sessions", err)
+		return err
+	}
+	err = tx.Commit(ctx)
+	r.s.fail("account.ClaimVerified commit", err)
+	return err
 }
 
 // prefixed qualifies each column of a comma-separated list with a table alias.

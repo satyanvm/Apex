@@ -274,6 +274,28 @@ async def _credential_values(run_id: str, key: str, cred_id: str) -> dict[str, A
     return data
 
 
+def _platform_chat_guard(cred_data: dict[str, Any], config: dict[str, Any]) -> None:
+    """Keep the server's Telegram bot on the chat the credential connected.
+
+    A credential from the one-click Telegram connect that uses the server's bot
+    may only message its own chat; an empty chat id is filled with it. Mirrors
+    platformChatProps in the pieces worker.
+    """
+    if cred_data.get("platform_bot") != "telegram" or "chatId" not in config:
+        return
+    connected = str(cred_data.get("chat_id") or "").strip()
+    if not connected:
+        raise RuntimeError("This Telegram connection has no chat. Connect Telegram again from the Run dialog.")
+    given = str(config.get("chatId") or "").strip()
+    if not given:
+        config["chatId"] = connected
+    elif given != connected:
+        raise RuntimeError(
+            f"The Apex bot can only message the chat you connected ({connected}), not {given}. "
+            "Use that chat id, or connect your own bot to message other chats."
+        )
+
+
 # ─────────────────────────── handlers ───────────────────────────
 
 @handles("trigger.manual", "trigger.webhook", "trigger.schedule")
@@ -594,7 +616,9 @@ async def _integration(ctx: NodeContext) -> NodeResult:
         fkey = f.get("key")
         if fkey and not f.get("required") and cfg.get(fkey) is None:
             cfg[fkey] = f.get("default", "")
-    roots = {"config": _render_config(cfg, ctx), "credentials": creds}
+    rendered = _render_config(cfg, ctx)
+    _platform_chat_guard(cred_data, rendered)
+    roots = {"config": rendered, "credentials": creds}
 
     if runtime == "browser":
         raw = render_tpl(_cfg(ctx, "urls"), ctx, roots)

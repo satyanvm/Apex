@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchPreflight, launchRun, type RunPreflight } from "@/lib/api";
 import { ConnectAccounts } from "@/components/connect-accounts";
+import { fetchTelegramChats, type TelegramChat } from "@/lib/connect";
 import type { Workflow } from "@/lib/types";
 
 /**
@@ -38,6 +39,24 @@ export function RunWorkflowDialog({
   const [error, setError] = React.useState<string | null>(null);
   // null while loading or when the check itself failed (launch then decides).
   const [preflight, setPreflight] = React.useState<RunPreflight | null>(null);
+  // The connected Telegram chat fills an empty chat id input, so nobody has to
+  // look their numeric chat id up.
+  const [telegramChat, setTelegramChat] = React.useState<TelegramChat | null>(null);
+  const chatKeys = React.useMemo(() => keys.filter((k) => /chat_?id/i.test(k)), [keys]);
+
+  const loadTelegramChat = React.useCallback(() => {
+    if (chatKeys.length === 0) return;
+    fetchTelegramChats().then((chats) => {
+      const chat = chats[chats.length - 1];
+      if (!chat) return;
+      setTelegramChat(chat);
+      setValues((prev) => {
+        const next = { ...prev };
+        for (const k of chatKeys) if (!(next[k] ?? "").trim()) next[k] = chat.chatId;
+        return next;
+      });
+    });
+  }, [chatKeys]);
 
   React.useEffect(() => {
     if (open) {
@@ -45,7 +64,9 @@ export function RunWorkflowDialog({
       setError(null);
       setLaunching(false);
       setPreflight(null);
+      setTelegramChat(null);
       fetchPreflight(workflow.slug).then(setPreflight).catch(() => setPreflight(null));
+      loadTelegramChat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -87,6 +108,11 @@ export function RunWorkflowDialog({
               onChange={(e) => setValues((prev) => ({ ...prev, [k]: e.target.value }))}
               placeholder={inputHint(k)}
             />
+            {telegramChat && chatKeys.includes(k) && values[k] === telegramChat.chatId && (
+              <span className="mt-1 block text-[11px] text-faint">
+                Your connected Telegram chat{telegramChat.chatName ? ` (${telegramChat.chatName})` : ""}
+              </span>
+            )}
           </Field>
         ))}
         {missing.length > 0 && (
@@ -95,7 +121,14 @@ export function RunWorkflowDialog({
           </p>
         )}
         {preflight && !preflight.ready && (
-          <ConnectAccounts slug={workflow.slug} preflight={preflight} onChange={setPreflight} />
+          <ConnectAccounts
+            slug={workflow.slug}
+            preflight={preflight}
+            onChange={(next) => {
+              setPreflight(next);
+              loadTelegramChat();
+            }}
+          />
         )}
         {error && (
           <div className="rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-[12px] text-danger">
@@ -140,7 +173,7 @@ function inputLabel(key: string): string {
 function inputHint(key: string): string | undefined {
   if (key === "topic") return "AI";
   if (/email/i.test(key)) return "you@gmail.com";
-  if (/chat_?id/i.test(key)) return "Numeric chat id, e.g. 123456789";
+  if (/chat_?id/i.test(key)) return "Fills in once Telegram is connected";
   return undefined;
 }
 

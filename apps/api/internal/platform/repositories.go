@@ -23,6 +23,9 @@ type AccountRepo interface {
 	// SessionMember returns the member of an unexpired session.
 	SessionMember(tokenHash string, now time.Time) (domain.Member, bool)
 	DeleteSession(tokenHash string)
+	// ClaimVerified drops the account's password and ends its sessions, once
+	// the owner of its email address has proved it another way (Google).
+	ClaimVerified(id domain.MemberId) error
 }
 
 // Storage interfaces. Services depend only on these, never on a concrete store,

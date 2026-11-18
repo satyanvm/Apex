@@ -9,6 +9,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { platformChatProps } from './connections';
 import { CredentialResolver } from './credentials';
 import { actionOf, LoadedPiece, PieceAction, Registry } from './pieces';
 
@@ -50,6 +51,7 @@ export function makeExecutePiece(registry: Registry, resolveCredential?: Credent
     // credential id is an error; silently switching to another secret can run
     // the action against the wrong account.
     let auth: unknown;
+    let props = input.props;
     if (input.credentialId || input.authEnvKey) {
       if (input.credentialId) {
         if (!resolveCredential) {
@@ -60,6 +62,9 @@ export function makeExecutePiece(registry: Registry, resolveCredential?: Credent
           return { ok: false, error: `credential ${input.credentialId} not found`, errorType: 'MissingCredential' };
         }
         auth = normalizeDbAuth(data, piece);
+        const chat = platformChatProps(data, props, action.props);
+        if ('error' in chat) return { ok: false, error: chat.error, errorType: 'MissingCredential' };
+        props = chat.props;
         if (auth instanceof String && auth.trim() === '') {
           return {
             ok: false,
@@ -86,7 +91,7 @@ export function makeExecutePiece(registry: Registry, resolveCredential?: Credent
 
     try {
       const output = await withTimeout(
-        runAction(piece, action, input.props, auth),
+        runAction(piece, action, props, auth),
         RUN_TIMEOUT_MS,
         `piece run exceeded ${RUN_TIMEOUT_MS / 1000}s`,
       );

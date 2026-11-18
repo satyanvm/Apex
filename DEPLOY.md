@@ -78,7 +78,10 @@ it created. Workflows and runs are listed for every account. Workflows created
 before accounts existed belong to no account: anyone signed in can run them
 with their own credentials, and nobody can edit them.
 
-There is no password reset or email verification yet.
+There is no password reset or email verification yet. Signing in with Google
+proves the address: if a password account already used that email, its
+password stops working and it signs in with Google from then on, so nobody who
+registered someone else's address keeps access.
 
 ## Controlling cost
 
@@ -112,6 +115,34 @@ node and names what's missing.
 | Browserbase | `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID` | Browser nodes |
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email nodes |
 | Langfuse | `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Tracing LLM calls |
+| Google OAuth client | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Continue with Google", and one-click Gmail, Sheets, Drive and Calendar |
+| Other OAuth apps | `OAUTH_<PROVIDER>_CLIENT_ID`, `OAUTH_<PROVIDER>_CLIENT_SECRET` | One-click Slack, GitHub, Notion, Microsoft, … (see `.env.example`) |
+| Telegram bot | `TELEGRAM_BOT_TOKEN` | Connecting Telegram by tapping Start, with no token or chat id to copy |
+
+### Google sign-in and one-click connections
+
+Create one OAuth client at https://console.cloud.google.com/apis/credentials
+(type: Web application) with these two authorized redirect URIs:
+
+```
+https://yourdomain.com/api/auth/google/callback
+https://yourdomain.com/api/oauth/callback
+```
+
+Put its id and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. While the
+Google app is in Testing mode, only the test users you list on its consent screen
+can connect Gmail, Sheets or Drive. Publishing it with those scopes needs
+Google's verification. Sign-in alone (openid, email, profile) needs none.
+
+Every other provider's app uses `https://yourdomain.com/api/oauth/callback`.
+Integrations whose provider has no app configured keep the paste-a-token form.
+
+For Telegram, create a bot with @BotFather and set `TELEGRAM_BOT_TOKEN`. Users
+then connect by opening the bot and tapping Start. The bot can only message the
+chat each user connected.
+
+Step-by-step instructions for Google, Telegram, Slack, GitHub, Microsoft and
+every other provider are in [docs/oauth-setup.md](docs/oauth-setup.md).
 
 ## Updating
 

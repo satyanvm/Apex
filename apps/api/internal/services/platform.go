@@ -30,6 +30,11 @@ type Platform struct {
 	Integrations  *IntegrationService
 	Credentials   *CredentialService
 	Accounts      *AccountService
+	GoogleSignIn  *GoogleSignIn
+	// Connections links third-party accounts in one click: OAuth2 apps and
+	// Telegram (oauth_connect.go, telegram_connect.go).
+	OAuthConnect *OAuthConnectService
+	Telegram     *TelegramConnectService
 
 	// RunLimit caps manual runs per account; CompileLimit caps signed-in
 	// compiles per account. Both per rolling 24 hours.
@@ -98,6 +103,8 @@ func NewPlatform(opts Options) *Platform {
 	emit := NewEmitter(bus, clock, workspaceID)
 
 	logs := NewLogService(deps, emit)
+	credentials := NewCredentialService(deps)
+	connectHTTP := &http.Client{Timeout: 20 * time.Second}
 
 	return &Platform{
 		Repos:         repos,
@@ -114,8 +121,11 @@ func NewPlatform(opts Options) *Platform {
 		Activity:      NewActivityService(deps),
 		Stats:         NewStatsService(deps),
 		Integrations:  NewIntegrationService(deps, &http.Client{Timeout: 20 * time.Second}),
-		Credentials:   NewCredentialService(deps),
+		Credentials:   credentials,
 		Accounts:      NewAccountService(deps),
+		GoogleSignIn:  NewGoogleSignIn(connectHTTP),
+		OAuthConnect:  NewOAuthConnectService(credentials, connectHTTP),
+		Telegram:      NewTelegramConnectService(credentials, logger, &http.Client{Timeout: 40 * time.Second}),
 		RunLimit:      NewRateLimiter(limitFromEnv("RUN_LIMIT_PER_DAY", 20), 24*time.Hour, time.Now),
 		CompileLimit:  NewRateLimiter(limitFromEnv("COMPILE_LIMIT_PER_DAY", 20), 24*time.Hour, time.Now),
 	}

@@ -54,6 +54,8 @@ export function startOptionsServer(
       runTrigger(JSON.parse(body) as RunTriggerRequest, registry, resolveCredential, storeFactory),
     '/trigger-lifecycle': (body) =>
       triggerLifecycle(JSON.parse(body) as TriggerLifecycleRequest, registry, resolveCredential, storeFactory),
+    // The OAuth2 settings each piece declares, for the API's one-click connect.
+    '/oauth-apps': async () => ({ ok: true, apps: oauthApps(registry) }),
   };
 
   const server = http.createServer((req, res) => {
@@ -93,10 +95,42 @@ export function startOptionsServer(
     });
   });
   server.listen(port, () =>
-    console.log(`piece HTTP runtime on :${port} (POST /options, /run-trigger, /trigger-lifecycle)`),
+    console.log(`piece HTTP runtime on :${port} (POST /options, /run-trigger, /trigger-lifecycle, /oauth-apps)`),
   );
   server.on('error', (err) => console.error('piece HTTP runtime error:', err));
   return server;
+}
+
+/** slug → the piece's OAuth2 settings, for every piece whose auth is OAuth2. */
+export function oauthApps(registry: Registry): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [slug, piece] of registry.pieces) {
+    const a = piece.auth as Record<string, any> | undefined;
+    if (!a || String(a.type ?? '').toUpperCase() !== 'OAUTH2') continue;
+    if (typeof a.authUrl !== 'string' || typeof a.tokenUrl !== 'string') continue;
+    // Client-credentials-only apps have no consent screen to send a user to.
+    if (a.grantType === 'client_credentials') continue;
+    // URLs like https://{cloud}/{tenant}/oauth2/v2.0/authorize take the auth
+    // props' defaults (login.microsoftonline.com, common). Props with no
+    // default stay as {placeholders}, and the API keeps the manual form.
+    const props: Record<string, string> = {};
+    for (const [k, def] of Object.entries((a.props ?? {}) as Record<string, any>)) {
+      if (typeof def?.defaultValue === 'string' && def.defaultValue) props[k] = def.defaultValue;
+    }
+    const fill = (v: string) => v.replace(/\{(\w+)\}/g, (m, k) => props[k] ?? m);
+    out[slug] = {
+      authUrl: fill(a.authUrl),
+      tokenUrl: fill(a.tokenUrl),
+      scope: Array.isArray(a.scope) ? a.scope.map((x: unknown) => fill(String(x))) : [],
+      props,
+      pkce: Boolean(a.pkce),
+      pkceMethod: a.pkceMethod ? String(a.pkceMethod) : undefined,
+      extra: a.extra && typeof a.extra === 'object' ? a.extra : undefined,
+      authorizationMethod: a.authorizationMethod ? String(a.authorizationMethod) : undefined,
+      prompt: a.prompt ? String(a.prompt) : undefined,
+    };
+  }
+  return out;
 }
 
 async function resolveOptions(

@@ -66,3 +66,21 @@ export function safeNext(next: string | null | undefined): string {
 export function signInHref(path: string, mode: "signin" | "signup" = "signin"): string {
   return `/${mode}?next=${encodeURIComponent(path)}`;
 }
+
+/** Full-page navigation target for "Continue with Google". The API redirects to
+ *  Google, then back to `next` with the session cookie set. */
+export function googleSignInHref(next: string): string {
+  return `/api/auth/google/start?next=${encodeURIComponent(safeNext(next))}`;
+}
+
+/** Whether the server has Google sign-in configured. */
+export async function fetchAuthProviders(): Promise<{ google: boolean }> {
+  try {
+    const res = await fetch("/api/auth/providers", { cache: "no-store" });
+    if (!res.ok) return { google: false };
+    const data = (await res.json()) as { google?: boolean };
+    return { google: Boolean(data.google) };
+  } catch {
+    return { google: false };
+  }
+}

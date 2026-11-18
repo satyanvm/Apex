@@ -111,7 +111,33 @@ async def fetch_credential_data(credential_id: str) -> dict[str, Any] | None:
         if not row:
             return None
         data = row[0]
-        return open_credential_data(data) if isinstance(data, dict) else {}
+        return fill_platform_values(open_credential_data(data)) if isinstance(data, dict) else {}
+
+
+PLATFORM_PREFIX = "$platform:"
+_PLATFORM_ENV = {"telegram": "TELEGRAM_BOT_TOKEN"}
+
+
+def fill_platform_values(data: dict[str, Any]) -> dict[str, Any]:
+    """Replace "$platform:<name>" values with the server's own secret.
+
+    The API's Telegram connect flow stores this marker instead of copying the
+    server's bot token into the credential (services/telegram_connect.go). A
+    marker this server can't fill becomes "" so the node fails as a missing
+    credential. Adds ``platform_bot`` naming the platform.
+    """
+    out: dict[str, Any] = {}
+    platform = ""
+    for k, v in data.items():
+        if isinstance(v, str) and v.startswith(PLATFORM_PREFIX):
+            platform = v[len(PLATFORM_PREFIX):]
+            env_key = _PLATFORM_ENV.get(platform)
+            out[k] = os.getenv(env_key, "").strip() if env_key else ""
+        else:
+            out[k] = v
+    if platform:
+        out["platform_bot"] = platform
+    return out
 
 
 def open_credential_data(data: dict[str, Any]) -> dict[str, Any]:

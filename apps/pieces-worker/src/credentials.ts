@@ -12,6 +12,7 @@ import { createDecipheriv } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Pool } from 'pg';
+import { fillPlatformValues, needsRefresh, refreshOAuth, sealCredentialData } from './connections';
 
 /** Resolve a credential id to its `data` jsonb, or null when the row is gone. */
 export type CredentialResolver = (id: string) => Promise<Record<string, unknown> | null>;
@@ -66,11 +67,47 @@ export function makeDbCredentialResolver(databaseUrl: string | undefined): Crede
     throw new Error('DATABASE_URL is required — the pieces worker resolves stored credentials from Postgres');
   }
   const pool = new Pool({ connectionString: databaseUrl, max: 3 });
-  return async (id: string) => {
+  const refreshing = new Map<string, Promise<Record<string, unknown>>>();
+
+  const load = async (id: string): Promise<Record<string, unknown> | null> => {
     const res = await pool.query('select data from credentials where id = $1', [id]);
     if (res.rowCount === 0) return null;
     const data = res.rows[0]?.data;
     return data && typeof data === 'object' ? openCredentialData(data as Record<string, unknown>) : {};
+  };
+
+  // One refresh per credential at a time: providers that rotate refresh
+  // tokens would reject the second of two concurrent refreshes.
+  const refresh = (id: string, data: Record<string, unknown>) => {
+    let p = refreshing.get(id);
+    if (!p) {
+      p = (async () => {
+        const latest = (await load(id)) ?? data;
+        if (!needsRefresh(latest)) return latest;
+        const next = await refreshOAuth(latest);
+        await pool.query('update credentials set data = $2, updated_at = now() where id = $1', [
+          id,
+          JSON.stringify(sealCredentialData(next)),
+        ]);
+        return next;
+      })().finally(() => refreshing.delete(id));
+      refreshing.set(id, p);
+    }
+    return p;
+  };
+
+  return async (id: string) => {
+    let data = await load(id);
+    if (data === null) return null;
+    if (needsRefresh(data)) {
+      try {
+        data = await refresh(id, data);
+      } catch (err) {
+        // Run with the stored token: the provider's own error then says why.
+        console.warn(`credential ${id}: ${(err as Error).message}`);
+      }
+    }
+    return fillPlatformValues(data);
   };
 }
 
