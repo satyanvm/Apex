@@ -144,3 +144,19 @@ func TestScheduleFrom_TimeParsing(t *testing.T) {
 		t.Errorf("scheduleFrom(no cadence) = %v, want nil", *got)
 	}
 }
+
+func TestPruneUnusedInputDropsInputsNoNodeUses(t *testing.T) {
+	p := Plan{
+		DefaultInput: map[string]any{
+			"topic": "AI agents", "email": "", "chat_id": "", "slackWebhook": "https://hooks.slack.com/services/xxxx",
+			"emailRecipient": "x@org.com", "chat": "",
+		},
+		Nodes: []domain.GraphNode{
+			{Key: "send", Type: "telegram.sendMessage", Config: map[string]any{"chatId": "{{input.chat_id}}", "text": "hi"}},
+		},
+	}
+	pruneUnusedInput(&p)
+	if len(p.DefaultInput) != 3 || p.DefaultInput["chat_id"] == nil || p.DefaultInput["topic"] == nil || p.DefaultInput["email"] == nil {
+		t.Fatalf("defaultInput = %v", p.DefaultInput)
+	}
+}

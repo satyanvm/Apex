@@ -100,6 +100,7 @@ func CompilePrompt(ctx context.Context, prompt, name, email, schedule string) (P
 		return Plan{}, err
 	}
 	p.Nodes = compiled
+	pruneUnusedInput(&p)
 
 	if strings.TrimSpace(name) != "" {
 		p.Name = name
@@ -626,6 +627,37 @@ func overlayMeta(spec reduceGraphSpec, p *Plan) {
 }
 
 /* ------------------------------- small helpers ------------------------------ */
+
+// keptInputs are read by the runtime directly (an agent with no prompt falls
+// back to the topic; email delivery to the email), so they stay even when no
+// node names them.
+var keptInputs = map[string]bool{"topic": true, "email": true}
+
+// pruneUnusedInput drops defaultInput keys no node references as input.<key>.
+// Models sometimes list inputs they then don't use, often with placeholder
+// values ("https://hooks.slack.com/services/xxxx"), and the Run dialog would
+// ask the user to fill every one of them in.
+func pruneUnusedInput(p *Plan) {
+	if len(p.DefaultInput) == 0 {
+		return
+	}
+	var refs strings.Builder
+	for _, n := range p.Nodes {
+		if raw, err := json.Marshal(n.Config); err == nil {
+			refs.Write(raw)
+		}
+	}
+	all := refs.String()
+	for k := range p.DefaultInput {
+		if keptInputs[k] {
+			continue
+		}
+		re := regexp.MustCompile(`\binput\.` + regexp.QuoteMeta(k) + `\b`)
+		if !re.MatchString(all) {
+			delete(p.DefaultInput, k)
+		}
+	}
+}
 
 // servicesOf lists the distinct integration services a graph touches ("slack",
 // "github", …) for the UI preview chip row. Built-in kinds are skipped; a

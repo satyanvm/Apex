@@ -169,3 +169,18 @@ func TestServicesOf_PieceSlug(t *testing.T) {
 		t.Fatalf("servicesOf = %v, want %v", got, want)
 	}
 }
+
+func TestPlatformOnlyPiecesAreNotPlannable(t *testing.T) {
+	cat := LoadCatalog()
+	for _, id := range []string{"pieces.ai.askAi", "pieces.ai.run_agent"} {
+		if _, ok := cat.ByID[id]; ok {
+			t.Errorf("%s is plannable but can't run in this runtime", id)
+		}
+	}
+	if _, ok := cat.Clusters["pieces.ai"]; ok {
+		t.Error("the pieces.ai cluster is still routable")
+	}
+	if _, ok := cat.ByID["agent.llm"]; !ok {
+		t.Fatal("agent.llm missing")
+	}
+}

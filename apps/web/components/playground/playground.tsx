@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Check, Copy, Play, Square } from "lucide-react";
+import { ArrowRight, Check, Copy, Play, Sparkles, Square } from "lucide-react";
 import { PENDING_PROMPT_KEY } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import {
   applyEvent,
   emptyStages,
   EXAMPLES,
+  SHOWCASE,
   parseFrame,
   type CompileEvent,
   type CompileResult,
@@ -35,7 +36,8 @@ function runThis(prompt: string) {
 }
 
 export function Playground() {
-  const [prompt, setPrompt] = React.useState("");
+  // Start with the featured prompt in the box, so one click shows a full compile.
+  const [prompt, setPrompt] = React.useState(SHOWCASE.prompt);
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [stages, setStages] = React.useState<Stages>(emptyStages);
   const [result, setResult] = React.useState<CompileResult | null>(null);
@@ -173,6 +175,32 @@ export function Playground() {
             )}
           </div>
         </form>
+
+        <div className="mt-4 rounded-lg border border-accent/30 bg-accent/5 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-fg">
+                <Sparkles className="size-3.5 shrink-0 text-accent" />
+                {SHOWCASE.label}
+                <span className="rounded-full bg-success-bg px-1.5 py-px text-[10.5px] font-medium text-success">
+                  No accounts needed
+                </span>
+              </p>
+              <p className="mt-1 text-[12px] leading-relaxed text-muted">{SHOWCASE.summary}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={compiling}
+            onClick={() => {
+              setPrompt(SHOWCASE.prompt);
+              void compile(SHOWCASE.prompt);
+            }}
+            className="mt-2.5 flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[12.5px] font-medium text-accent-fg transition-colors hover:bg-accent-soft disabled:opacity-40"
+          >
+            Compile this example <ArrowRight className="size-3.5" />
+          </button>
+        </div>
 
         <div className="mt-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-faint">Or try one</p>

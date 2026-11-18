@@ -76,6 +76,13 @@ type pieceProp struct {
 	Dynamic     bool   `json:"dynamic"`
 }
 
+// platformOnlyPieces are installed but can't run here: every action calls
+// Activepieces' own hosted services (the "ai" piece runs its models through the
+// Activepieces engine API), which this runtime doesn't provide. Planning them
+// would compile a graph that fails at run time, so AI steps use the built-in
+// agent.llm instead.
+var platformOnlyPieces = map[string]bool{"ai": true}
+
 // piecesIndexPath resolves the index location: PIECES_INDEX_PATH wins; otherwise
 // walk up from the working directory (same discipline as catalogDir).
 func piecesIndexPath() string {
@@ -123,7 +130,7 @@ func mergePiecesIndex(cat *Catalog, path string) {
 			continue
 		}
 		slug := pieceSlugOf(n.ID)
-		if slug == "" {
+		if slug == "" || platformOnlyPieces[slug] {
 			continue
 		}
 		cluster := "pieces." + slug

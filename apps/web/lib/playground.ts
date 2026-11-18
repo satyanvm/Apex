@@ -112,6 +112,20 @@ export function kindOf(node: PublicNode): "trigger" | "agent" | "tool" | "logic"
   return "app";
 }
 
+/**
+ * The playground's featured prompt. Every step it compiles to reads public data
+ * or runs on the server's own model (Hacker News, Reddit, Google News RSS,
+ * Wikipedia, arXiv, Semantic Scholar, built-in LLM agents, a report), so it
+ * needs no accounts: a visitor sees a ~12-node graph, and after signing up can
+ * run it without connecting anything.
+ */
+export const SHOWCASE = {
+  label: "AI research briefing",
+  prompt:
+    "Every weekday at 8am, build an intelligence briefing on AI agents. In parallel, search Hacker News, Reddit and the Google News RSS feed for the latest discussion, pull the Wikipedia summary, and find new papers on arXiv and Semantic Scholar. Have one AI analyst review the research papers, another gauge community sentiment from Hacker News and Reddit, and a third summarize the news coverage. Then have an editor AI combine all three into a briefing with the top 5 takeaways, and publish it as a PDF report.",
+  summary: "About 12 steps: 6 public sources, 4 AI agents and a report. Needs no accounts, so it runs right after sign-up.",
+};
+
 export const EXAMPLES = [
   {
     label: "Revenue digest",
